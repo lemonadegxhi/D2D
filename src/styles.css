@@ -1,0 +1,17 @@
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  min-height: 100vh;
+  background: #ffffff;
+}
+
+.app {
+  min-height: 100vh;
+  background: #ffffff;
+}
+
