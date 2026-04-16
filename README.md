@@ -1,48 +1,34 @@
 # DAY2DAY
 
-This repo now includes:
+DAY2DAY is now scaffolded as the start of a web-hosted secure file server:
 
-- a root React + Vite frontend
-- a `server/` Express + PostgreSQL backend designed for local development with Docker Desktop
+- React + Vite frontend with login and file import UI
+- Express + PostgreSQL backend
+- PostgreSQL-backed persisted user file storage
+- seeded admin login groundwork
+- audit log table for file access events
 
-## Structure
+## Current groundwork
 
-```text
-DAY2DAY/
-├── src/
-├── server/
-├── docker-compose.yml
-├── index.html
-├── package.json
-├── vite.config.js
-└── README.md
-```
+The project now includes:
 
-## Frontend
+- `POST /api/auth/login` for seeded admin authentication
+- `POST /api/files/upload` to import files (click-select or drag/drop in UI) into PostgreSQL
+- `GET /api/files/mine` to list files saved for the logged-in user
+- `GET /api/files/download/:id` to retrieve previously uploaded files
+- `GET /api/files/overview` for total file count, bytes used, and recent files
+- `GET /api/files/browse?path=` for safe directory listing inside the storage root
+- automatic bootstrap of `app_users` and `file_audit_log` tables on server start
+- automatic bootstrap of `user_files` table for persistent file content
+- path normalization to prevent browsing outside the configured storage vault
 
-Install frontend dependencies from the project root:
+Current upload limit is 10 MB per file.
 
-```powershell
-npm install
-```
+This is still a foundation, not a finished secure file platform. Uploads, downloads, real sessions/JWT/cookies, per-user permissions, rate limiting, and encryption-at-rest are still future work.
 
-Start the frontend:
+## Local setup
 
-```powershell
-npm run dev
-```
-
-This serves the app at:
-
-```text
-http://localhost:5173
-```
-
-Right now it intentionally renders a plain white page.
-
-## Backend and Database
-
-### Step 1: Start PostgreSQL in Docker Desktop
+### 1. Start PostgreSQL
 
 From the project root:
 
@@ -50,80 +36,71 @@ From the project root:
 docker compose up -d
 ```
 
-This starts a PostgreSQL container with:
+Postgres will run with:
 
 - database: `day2day`
 - username: `postgres`
 - password: `postgres`
 - port: `5432`
 
-### Step 2: Set up the server environment file
+### 2. Configure the server
 
-Inside `server/`, copy `.env.example` to `.env`.
-
-PowerShell:
+Inside `server/`, copy `.env.example` to `.env` if needed:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-### Step 3: Install backend dependencies
+Default values now include:
+
+```text
+CLIENT_URL=http://localhost:5173
+STORAGE_ROOT=./storage/library
+SEED_ADMIN_USERNAME=admin
+SEED_ADMIN_PASSWORD=ChangeMeNow123!
+```
+
+### 3. Run the backend
 
 Inside `server/`:
 
 ```powershell
 npm install
-```
-
-### Step 4: Run the server
-
-Inside `server/`:
-
-```powershell
 npm run dev
 ```
 
-If the database connection works, the server will start on `http://localhost:5000`.
+On startup the server will:
 
-### Step 5: Verify the API
+- connect to PostgreSQL
+- create the storage root if it does not exist
+- create the auth and audit tables if missing
+- seed the admin user if it does not exist
 
-Open:
+The API will be available at `http://localhost:5000`.
 
-```text
-http://localhost:5000/api/health
-```
+### 4. Run the frontend
 
-Expected response:
-
-```json
-{
-  "status": "ok",
-  "database": "connected"
-}
-```
-
-## Useful Docker commands
-
-Start database:
+From the project root:
 
 ```powershell
-docker compose up -d
+npm install
+npm run dev
 ```
 
-Stop database:
+The UI will be available at `http://localhost:5173`.
 
-```powershell
-docker compose down
-```
+## Using the scaffold
 
-Stop database and remove volume data:
+1. Start the backend and frontend.
+2. Sign in with the seeded admin credentials from `server/.env`.
+3. Log in with seeded credentials.
+4. Import files from the browser with click-select or drag/drop.
+5. Refresh or re-login to verify uploaded files remain available under your account.
 
-```powershell
-docker compose down -v
-```
+## Suggested next steps
 
-## Notes
-
-- The backend uses the `pg` package with a connection pool.
-- The sample route checks PostgreSQL connectivity by running `SELECT NOW()`.
-- When you add React later, your frontend can call `http://localhost:5000/api/...`.
+- Add upload and download endpoints with streaming
+- Replace demo session tokens with secure cookie-based auth or JWT
+- Add per-user and per-folder permissions
+- Add file metadata tables instead of filesystem-only discovery
+- Add virus scanning, rate limiting, and request logging

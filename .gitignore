@@ -5,4 +5,5 @@ dist/
 build/
 coverage/
 server/.env
+storage/
 server/node_modules/

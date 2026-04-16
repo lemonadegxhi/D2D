@@ -11,9 +11,8 @@ app.use(
     origin: clientUrl,
   })
 );
-app.use(express.json());
+app.use(express.json({ limit: "12mb" }));
 
 app.use("/api", routes);
 
 module.exports = app;
-
