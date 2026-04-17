@@ -49,6 +49,20 @@ async function bootstrapDatabase() {
   `);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS calendar_events (
+      id SERIAL PRIMARY KEY,
+      owner_username VARCHAR(64) NOT NULL REFERENCES app_users(username) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      event_date DATE NOT NULL,
+      start_time TIME,
+      end_time TIME,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query(`
     ALTER TABLE user_files
     ADD COLUMN IF NOT EXISTS folder_id INTEGER REFERENCES user_folders(id) ON DELETE SET NULL;
   `);
@@ -61,6 +75,11 @@ async function bootstrapDatabase() {
   await pool.query(`
     ALTER TABLE user_folders
     ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS calendar_events_owner_month_idx
+    ON calendar_events (owner_username, event_date, start_time, id);
   `);
 
   await pool.query(`

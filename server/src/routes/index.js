@@ -2,6 +2,7 @@ const express = require("express");
 
 const pool = require("../config/db");
 const authRouter = require("./auth");
+const calendarRouter = require("./calendar");
 const filesRouter = require("./files");
 
 const router = express.Router();
@@ -31,6 +32,7 @@ router.get("/health", async (req, res) => {
 });
 
 router.use("/auth", authRouter);
+router.use("/calendar", calendarRouter);
 router.use("/files", filesRouter);
 
 module.exports = router;

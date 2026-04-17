@@ -70,6 +70,11 @@ body[data-theme="sand"] {
   max-width: 1280px;
 }
 
+.dashboard-page {
+  margin-top: 16px;
+  max-width: 1280px;
+}
+
 h1,
 h2 {
   margin: 0;
@@ -144,6 +149,12 @@ button:disabled {
   gap: 14px;
 }
 
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .menu-shell {
   position: relative;
 }
@@ -205,6 +216,150 @@ button:disabled {
 .theme-options {
   display: grid;
   gap: 4px;
+}
+
+.dashboard-layout {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  gap: 18px;
+}
+
+.calendar-panel,
+.dashboard-actions-panel {
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.calendar-panel {
+  padding: 20px;
+}
+
+.calendar-header {
+  margin-bottom: 16px;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.calendar-weekdays {
+  margin-bottom: 8px;
+}
+
+.calendar-weekday {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.calendar-cell {
+  min-height: 88px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.calendar-day-label {
+  display: block;
+}
+
+.calendar-events {
+  display: grid;
+  gap: 4px;
+}
+
+.calendar-event-pill {
+  display: block;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: rgba(11, 87, 208, 0.12);
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 500;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-more-events {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 500;
+}
+
+.calendar-cell.muted {
+  opacity: 0.35;
+}
+
+.calendar-cell.today {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.dashboard-actions-panel {
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  padding: 20px;
+}
+
+.dashboard-card {
+  width: 100%;
+  padding: 24px;
+  border: 1px solid var(--border);
+  background: var(--panel-muted);
+  display: grid;
+  gap: 12px;
+}
+
+.dashboard-card p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.calendar-form {
+  display: grid;
+  gap: 10px;
+}
+
+.calendar-form-times {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.calendar-list {
+  display: grid;
+  gap: 10px;
+}
+
+.calendar-list-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.calendar-list-item strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.calendar-list-item p {
+  margin: 0;
 }
 
 .explorer {
@@ -424,6 +579,44 @@ button:disabled {
   margin: 0;
 }
 
+.pdf-preview-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 20;
+}
+
+.pdf-preview-modal {
+  width: min(1100px, 100%);
+  height: min(90vh, 900px);
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+}
+
+.pdf-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-muted);
+}
+
+.pdf-preview-frame {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: #525659;
+}
+
 @media (max-width: 700px) {
   .login {
     grid-template-columns: 1fr;
@@ -442,7 +635,20 @@ button:disabled {
     width: 100%;
   }
 
+  .top-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
   .explorer {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .calendar-form-times {
     grid-template-columns: 1fr;
   }
 
@@ -467,5 +673,18 @@ button:disabled {
   .file-cell.type,
   .file-cell.modified {
     display: none;
+  }
+
+  .pdf-preview-overlay {
+    padding: 12px;
+  }
+
+  .pdf-preview-modal {
+    height: 85vh;
+  }
+
+  .pdf-preview-header {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

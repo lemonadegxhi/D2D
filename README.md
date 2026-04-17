@@ -18,8 +18,11 @@ The project now includes:
 - `GET /api/files/download/:id` to retrieve previously uploaded files
 - `GET /api/files/overview` for total file count, bytes used, and recent files
 - `GET /api/files/browse?path=` for safe directory listing inside the storage root
+- `GET /api/calendar/events?year=&month=` to load saved calendar events into the main-page calendar
+- `POST /api/calendar/events` to create a calendar event for the logged-in user
+- `DELETE /api/calendar/events/:id` to remove a saved calendar event
 - automatic bootstrap of `app_users` and `file_audit_log` tables on server start
-- automatic bootstrap of `user_files` table for persistent file content
+- automatic bootstrap of `user_files` and `calendar_events` tables for persistent data
 - path normalization to prevent browsing outside the configured storage vault
 
 Current upload limit is 10 MB per file.
@@ -54,6 +57,7 @@ Copy-Item .env.example .env
 Default values now include:
 
 ```text
+PUBLIC_SERVER_URL=http://localhost:5000
 CLIENT_URL=http://localhost:5173
 STORAGE_ROOT=./storage/library
 SEED_ADMIN_USERNAME=admin
@@ -94,8 +98,9 @@ The UI will be available at `http://localhost:5173`.
 1. Start the backend and frontend.
 2. Sign in with the seeded admin credentials from `server/.env`.
 3. Log in with seeded credentials.
-4. Import files from the browser with click-select or drag/drop.
-5. Refresh or re-login to verify uploaded files remain available under your account.
+4. Add calendar events from the dashboard card on the main page.
+5. Import files from the browser with click-select or drag/drop.
+6. Refresh or re-login to verify uploaded files and calendar events remain available under your account.
 
 ## Suggested next steps
 

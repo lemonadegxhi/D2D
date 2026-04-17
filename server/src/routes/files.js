@@ -1,4 +1,5 @@
 const express = require("express");
+const path = require("path");
 
 const pool = require("../config/db");
 const { buildStorageOverview, listDirectory } = require("../services/storageService");
@@ -196,6 +197,61 @@ async function ensureFolderNameAvailable(ownerUsername, parentFolderId, folderNa
   }
 }
 
+function normalizeRelativePath(relativePath = "") {
+  return String(relativePath || "")
+    .replace(/\\/g, "/")
+    .replace(/^\/+|\/+$/g, "");
+}
+
+function getFolderSegments(relativePath) {
+  const normalized = normalizeRelativePath(relativePath);
+
+  if (!normalized) {
+    return [];
+  }
+
+  const directoryPath = path.posix.dirname(normalized);
+
+  if (!directoryPath || directoryPath === ".") {
+    return [];
+  }
+
+  const segments = directoryPath.split("/").filter(Boolean);
+
+  if (segments.some((segment) => segment === "." || segment === "..")) {
+    throw new Error("Invalid relative path.");
+  }
+
+  return segments;
+}
+
+async function findOrCreateFolder(ownerUsername, parentFolderId, folderName) {
+  const result = await pool.query(
+    `
+      INSERT INTO user_folders (owner_username, parent_folder_id, folder_name)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (owner_username, COALESCE(parent_folder_id, -1), lower(folder_name))
+      DO UPDATE SET updated_at = NOW()
+      RETURNING id, owner_username, parent_folder_id, folder_name, created_at, updated_at
+    `,
+    [ownerUsername, parentFolderId, folderName]
+  );
+
+  return result.rows[0];
+}
+
+async function ensureFolderPath(ownerUsername, parentFolderId, relativePath) {
+  const segments = getFolderSegments(relativePath);
+  let currentFolderId = parentFolderId;
+
+  for (const segment of segments) {
+    const folder = await findOrCreateFolder(ownerUsername, currentFolderId, segment);
+    currentFolderId = folder.id;
+  }
+
+  return currentFolderId;
+}
+
 router.get("/overview", async (req, res) => {
   try {
     const overview = buildStorageOverview();
@@ -304,6 +360,7 @@ router.post("/upload", async (req, res) => {
   try {
     const actor = await getValidatedActor(req);
     const { fileName, mimeType, contentBase64 } = req.body ?? {};
+    const relativePath = normalizeRelativePath(req.body?.relativePath);
     const folderId = req.body?.folderId == null ? null : Number(req.body.folderId);
 
     if (!fileName || !mimeType || !contentBase64) {
@@ -319,6 +376,7 @@ router.post("/upload", async (req, res) => {
     }
 
     await getFolderRecord(actor, folderId);
+    const resolvedFolderId = await ensureFolderPath(actor, folderId, relativePath);
 
     const byteSize = Buffer.byteLength(contentBase64, "base64");
 
@@ -340,10 +398,10 @@ router.post("/upload", async (req, res) => {
         VALUES ($1, $2, $3, $4, $5, decode($6, 'base64'))
         RETURNING id, owner_username, folder_id, original_name, mime_type, byte_size, created_at, updated_at
       `,
-      [actor, folderId, fileName, mimeType, byteSize, contentBase64]
+      [actor, resolvedFolderId, fileName, mimeType, byteSize, contentBase64]
     );
 
-    await logAuditEvent(actor, "upload", fileName);
+    await logAuditEvent(actor, "upload", relativePath || fileName);
 
     return res.status(201).json({
       message: "File uploaded successfully.",
@@ -357,6 +415,8 @@ router.post("/upload", async (req, res) => {
           ? 403
           : error.message === "Folder not found."
             ? 404
+            : error.message === "Invalid relative path."
+              ? 400
             : 500;
 
     return res.status(status).json({
@@ -510,6 +570,103 @@ router.patch("/files/:id/move", async (req, res) => {
 
     return res.status(status).json({
       message: "Failed to move file.",
+      error: error.message,
+    });
+  }
+});
+
+router.delete("/files/:id", async (req, res) => {
+  try {
+    const actor = await getValidatedActor(req);
+    const id = Number(req.params.id);
+
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({
+        message: "Invalid file id.",
+      });
+    }
+
+    const result = await pool.query(
+      `
+        DELETE FROM user_files
+        WHERE id = $1 AND owner_username = $2
+        RETURNING id, owner_username, folder_id, original_name, mime_type, byte_size, created_at, updated_at
+      `,
+      [id, actor]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        message: "File not found.",
+      });
+    }
+
+    await logAuditEvent(actor, "delete_file", `${id}:${result.rows[0].original_name}`);
+
+    return res.json({
+      message: "File deleted successfully.",
+      file: result.rows[0],
+    });
+  } catch (error) {
+    const status =
+      error.message === "Authentication required."
+        ? 401
+        : error.message === "Unknown user."
+          ? 403
+          : 500;
+
+    return res.status(status).json({
+      message: "Failed to delete file.",
+      error: error.message,
+    });
+  }
+});
+
+router.delete("/folders/:id", async (req, res) => {
+  try {
+    const actor = await getValidatedActor(req);
+    const id = Number(req.params.id);
+
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({
+        message: "Invalid folder id.",
+      });
+    }
+
+    const folder = await getFolderRecord(actor, id);
+    const result = await pool.query(
+      `
+        DELETE FROM user_folders
+        WHERE id = $1 AND owner_username = $2
+        RETURNING id, owner_username, parent_folder_id, folder_name, created_at, updated_at
+      `,
+      [id, actor]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        message: "Folder not found.",
+      });
+    }
+
+    await logAuditEvent(actor, "delete_folder", `${folder.id}:${folder.folder_name}`);
+
+    return res.json({
+      message: "Folder deleted successfully.",
+      folder: result.rows[0],
+    });
+  } catch (error) {
+    const status =
+      error.message === "Authentication required."
+        ? 401
+        : error.message === "Unknown user."
+          ? 403
+          : error.message === "Folder not found."
+            ? 404
+            : 500;
+
+    return res.status(status).json({
+      message: "Failed to delete folder.",
       error: error.message,
     });
   }
