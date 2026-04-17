@@ -39,7 +39,7 @@ export async function fetchHealth() {
   return parseJsonResponse(response);
 }
 
-export async function uploadUserFile({ username, fileName, mimeType, contentBase64 }) {
+export async function uploadUserFile({ username, folderId, fileName, mimeType, contentBase64 }) {
   const response = await fetch(`${API_BASE_URL}/files/upload`, {
     method: "POST",
     headers: {
@@ -47,6 +47,7 @@ export async function uploadUserFile({ username, fileName, mimeType, contentBase
       "x-demo-user": username,
     },
     body: JSON.stringify({
+      folderId,
       fileName,
       mimeType,
       contentBase64,
@@ -63,6 +64,70 @@ export async function fetchMyFiles(username) {
           "x-demo-user": username,
         }
       : {},
+  });
+
+  return parseJsonResponse(response);
+}
+
+export async function browseFiles(username, folderId = null) {
+  const url = new URL(`${API_BASE_URL}/files/browse`);
+
+  if (folderId != null) {
+    url.searchParams.set("folderId", folderId);
+  }
+
+  const response = await fetch(url, {
+    headers: username
+      ? {
+          "x-demo-user": username,
+        }
+      : {},
+  });
+
+  return parseJsonResponse(response);
+}
+
+export async function createFolder(username, folderName, parentFolderId = null) {
+  const response = await fetch(`${API_BASE_URL}/files/folders`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-demo-user": username,
+    },
+    body: JSON.stringify({
+      folderName,
+      parentFolderId,
+    }),
+  });
+
+  return parseJsonResponse(response);
+}
+
+export async function renameFile(username, fileId, name) {
+  const response = await fetch(`${API_BASE_URL}/files/files/${fileId}/rename`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "x-demo-user": username,
+    },
+    body: JSON.stringify({
+      name,
+    }),
+  });
+
+  return parseJsonResponse(response);
+}
+
+export async function moveFile(username, fileId, targetFolderId) {
+  const response = await fetch(`${API_BASE_URL}/files/files/${fileId}/move`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "x-demo-user": username,
+    },
+    body: JSON.stringify({
+      targetFolderId,
+    }),
   });
 
   return parseJsonResponse(response);
