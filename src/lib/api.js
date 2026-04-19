@@ -22,13 +22,26 @@ export async function login(username, password) {
   return parseJsonResponse(response);
 }
 
-export async function signup(username, password) {
+export async function signup(email, username, password) {
   const response = await fetch(`${API_BASE_URL}/auth/signup`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ email, username, password }),
+  });
+
+  return parseJsonResponse(response);
+}
+
+export async function changePassword(username, currentPassword, newPassword) {
+  const response = await fetch(`${API_BASE_URL}/auth/password`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "x-demo-user": username,
+    },
+    body: JSON.stringify({ currentPassword, newPassword }),
   });
 
   return parseJsonResponse(response);

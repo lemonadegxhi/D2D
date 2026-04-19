@@ -6,6 +6,7 @@ async function bootstrapDatabase() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS app_users (
       id SERIAL PRIMARY KEY,
+      email TEXT,
       username VARCHAR(64) UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
       role VARCHAR(32) NOT NULL DEFAULT 'admin',
@@ -60,6 +61,17 @@ async function bootstrapDatabase() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+  `);
+
+  await pool.query(`
+    ALTER TABLE app_users
+    ADD COLUMN IF NOT EXISTS email TEXT;
+  `);
+
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS app_users_email_unique
+    ON app_users (lower(email))
+    WHERE email IS NOT NULL AND email <> '';
   `);
 
   await pool.query(`

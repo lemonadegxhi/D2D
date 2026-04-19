@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   browseFiles,
+  changePassword,
   createCalendarEvent,
   createFolder,
   deleteCalendarEvent,
@@ -18,8 +19,8 @@ import {
 } from "./lib/api";
 
 const initialCredentials = {
-  username: "admin",
-  password: "ChangeMeNow123!",
+  username: "",
+  password: "",
 };
 const AVAILABLE_THEMES = ["light", "dark", "sand"];
 
@@ -326,8 +327,11 @@ export default function App() {
   const [error, setError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [isWorking, setIsWorking] = useState(false);
+  const [isSignupOpen, setIsSignupOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [currentFolderId, setCurrentFolderId] = useState(null);
+  const [fileSearchQuery, setFileSearchQuery] = useState("");
   const [draggedFileId, setDraggedFileId] = useState(null);
   const [selectedItems, setSelectedItems] = useState([]);
   const [selectionAnchorKey, setSelectionAnchorKey] = useState(null);
@@ -342,6 +346,16 @@ export default function App() {
     startTime: "",
     endTime: "",
     description: "",
+  });
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [signupForm, setSignupForm] = useState({
+    email: "",
+    username: "",
+    password: "",
   });
   const [browserData, setBrowserData] = useState({
     currentFolder: { id: null, name: "", parentFolderId: null },
@@ -390,9 +404,33 @@ export default function App() {
     ],
     [browserData.files, browserData.folders]
   );
+  const visibleEntries = useMemo(() => {
+    const query = fileSearchQuery.trim().toLowerCase();
+
+    if (!query) {
+      return currentEntries;
+    }
+
+    return currentEntries.filter((entry) => {
+      if (entry.item_type === "folder") {
+        return String(entry.folder_name || "").toLowerCase().includes(query);
+      }
+
+      return [
+        entry.original_name,
+        entry.mime_type,
+        getFileCategory(entry),
+        formatBytes(entry.byte_size),
+        formatDate(entry.updated_at),
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(query);
+    });
+  }, [currentEntries, fileSearchQuery]);
   const currentSelectableItems = useMemo(
-    () => currentEntries.map((entry) => getItemFromEntry(entry)),
-    [currentEntries]
+    () => visibleEntries.map((entry) => getItemFromEntry(entry)),
+    [visibleEntries]
   );
   const selectedKeySet = useMemo(
     () => new Set(selectedItems.map((item) => getSelectionKey(item))),
@@ -487,6 +525,16 @@ export default function App() {
 
     loadCalendarEvents(authUser.username);
   }, [authUser, dashboardDate, page]);
+
+  useEffect(() => {
+    if (!fileSearchQuery.trim()) {
+      return;
+    }
+
+    const visibleKeys = new Set(currentSelectableItems.map((item) => getSelectionKey(item)));
+    setSelectedItems((current) => current.filter((item) => visibleKeys.has(getSelectionKey(item))));
+    setSelectionAnchorKey((current) => (current && visibleKeys.has(current) ? current : null));
+  }, [currentSelectableItems, fileSearchQuery]);
 
   async function loadFolderView(username, folderId = currentFolderId) {
     const payload = await browseFiles(username, folderId);
@@ -608,14 +656,29 @@ export default function App() {
     }
   }
 
-  async function handleSignup() {
+  async function handleSignup(event) {
+    event.preventDefault();
     setIsWorking(true);
     setError("");
 
     try {
-      const payload = await signup(credentials.username, credentials.password);
+      const payload = await signup(
+        signupForm.email,
+        signupForm.username,
+        signupForm.password
+      );
       setTheme(getStoredTheme(payload.user.username));
       setAuthUser(payload.user);
+      setCredentials({
+        username: "",
+        password: "",
+      });
+      setSignupForm({
+        email: "",
+        username: "",
+        password: "",
+      });
+      setIsSignupOpen(false);
       await loadFolderView(payload.user.username, null);
       setPage("dashboard");
       setStatus("Account created. Start by creating folders or importing files.");
@@ -634,6 +697,16 @@ export default function App() {
     } finally {
       setIsWorking(false);
     }
+  }
+
+  function openSignupDialog() {
+    setSignupForm({
+      email: "",
+      username: "",
+      password: "",
+    });
+    setError("");
+    setIsSignupOpen(true);
   }
 
   async function handleFilesSelected(fileList, targetFolderId = currentFolderId) {
@@ -878,35 +951,6 @@ export default function App() {
     }
   }
 
-  async function handleDeleteCurrentFolder() {
-    if (!authUser?.username || currentFolderId == null) {
-      return;
-    }
-
-    const folderName = browserData.currentFolder.name;
-    const parentFolderId = browserData.currentFolder.parentFolderId ?? null;
-    const confirmed = window.confirm(`Delete folder "${folderName}" and everything inside it?`);
-
-    if (!confirmed) {
-      return;
-    }
-
-    setIsWorking(true);
-    setError("");
-
-    try {
-      await deleteFolder(authUser.username, currentFolderId);
-      setSelectedItems([]);
-      setSelectionAnchorKey(null);
-      await loadFolderView(authUser.username, parentFolderId);
-      setStatus(`Deleted folder "${folderName}".`);
-    } catch (deleteError) {
-      setError(deleteError.message);
-    } finally {
-      setIsWorking(false);
-    }
-  }
-
   async function handleExternalDrop(event, targetFolderId = currentFolderId) {
     const droppedFiles = await extractDroppedFiles(event.dataTransfer);
     await handleFileImports(droppedFiles, targetFolderId);
@@ -965,6 +1009,40 @@ export default function App() {
     }
   }
 
+  async function handleChangePassword(event) {
+    event.preventDefault();
+
+    if (!authUser?.username) {
+      return;
+    }
+
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setError("New password and confirmation do not match.");
+      return;
+    }
+
+    setIsWorking(true);
+    setError("");
+
+    try {
+      await changePassword(
+        authUser.username,
+        passwordForm.currentPassword,
+        passwordForm.newPassword
+      );
+      setPasswordForm({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+      setStatus("Password updated.");
+    } catch (passwordError) {
+      setError(passwordError.message);
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   function handleLogout() {
     setAuthUser(null);
     setCurrentFolderId(null);
@@ -982,6 +1060,16 @@ export default function App() {
       endTime: "",
       description: "",
     });
+    setPasswordForm({
+      currentPassword: "",
+      newPassword: "",
+      confirmPassword: "",
+    });
+    setSignupForm({
+      email: "",
+      username: "",
+      password: "",
+    });
     setBrowserData({
       currentFolder: { id: null, name: "", parentFolderId: null },
       breadcrumbs: [],
@@ -991,8 +1079,131 @@ export default function App() {
     });
     setError("");
     setStatus("Log in to upload files.");
+    setIsSignupOpen(false);
     setIsMenuOpen(false);
+    setIsSettingsOpen(false);
     setPage("login");
+  }
+
+  function renderMainMenu() {
+    return (
+      <div className="menu-dropdown">
+        <button
+          type="button"
+          className="menu-item"
+          onClick={() => {
+            setIsSettingsOpen(true);
+            setIsMenuOpen(false);
+          }}
+        >
+          Settings
+        </button>
+        <button
+          type="button"
+          className="menu-item"
+          onClick={handleLogout}
+        >
+          Log out
+        </button>
+      </div>
+    );
+  }
+
+  function renderSettingsPanel() {
+    if (!isSettingsOpen) {
+      return null;
+    }
+
+    return (
+      <div className="settings-overlay" role="presentation">
+        <section
+          className="settings-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="settings-title"
+        >
+          <div className="settings-header">
+            <h2 id="settings-title">Settings</h2>
+            <button
+              type="button"
+              className="settings-close-button"
+              onClick={() => setIsSettingsOpen(false)}
+              aria-label="Close settings"
+            >
+              Close
+            </button>
+          </div>
+
+          <section className="settings-section">
+            <h3>Profile</h3>
+            <p className="status">Username: {authUser?.username}</p>
+            <form className="password-form" onSubmit={handleChangePassword} autoComplete="off">
+              <input
+                type="password"
+                name="current-day2day-password"
+                value={passwordForm.currentPassword}
+                onChange={(event) =>
+                  setPasswordForm((current) => ({
+                    ...current,
+                    currentPassword: event.target.value,
+                  }))
+                }
+                placeholder="Current password"
+                autoComplete="current-password"
+              />
+              <input
+                type="password"
+                name="new-day2day-password"
+                value={passwordForm.newPassword}
+                onChange={(event) =>
+                  setPasswordForm((current) => ({
+                    ...current,
+                    newPassword: event.target.value,
+                  }))
+                }
+                placeholder="New password"
+                autoComplete="new-password"
+              />
+              <input
+                type="password"
+                name="confirm-day2day-password"
+                value={passwordForm.confirmPassword}
+                onChange={(event) =>
+                  setPasswordForm((current) => ({
+                    ...current,
+                    confirmPassword: event.target.value,
+                  }))
+                }
+                placeholder="Confirm new password"
+                autoComplete="new-password"
+              />
+              <button type="submit" disabled={isWorking}>
+                {isWorking ? "Working..." : "Change password"}
+              </button>
+            </form>
+          </section>
+
+          <section className="settings-section">
+            <h3>Theme</h3>
+            <div className="settings-theme-options">
+              {AVAILABLE_THEMES.map((themeOption) => (
+                <button
+                  key={themeOption}
+                  type="button"
+                  className={`settings-theme-button ${theme === themeOption ? "active" : ""}`}
+                  onClick={() => {
+                    setTheme(themeOption);
+                    setStatus(`Theme changed to ${themeOption}.`);
+                  }}
+                >
+                  {themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}
+                </button>
+              ))}
+            </div>
+          </section>
+        </section>
+      </div>
+    );
   }
 
   if (page === "login") {
@@ -1001,9 +1212,10 @@ export default function App() {
         <div className="container login-page">
           <h1>DAY2DAY Login</h1>
           <p className="health">{healthStatus}</p>
-          <form className="login" onSubmit={handleLogin}>
+          <form className="login" onSubmit={handleLogin} autoComplete="off">
             <input
               type="text"
+              name="day2day-username"
               value={credentials.username}
               onChange={(event) =>
                 setCredentials((current) => ({
@@ -1012,9 +1224,11 @@ export default function App() {
                 }))
               }
               placeholder="Username"
+              autoComplete="off"
             />
             <input
               type="password"
+              name="day2day-password"
               value={credentials.password}
               onChange={(event) =>
                 setCredentials((current) => ({
@@ -1023,18 +1237,89 @@ export default function App() {
                 }))
               }
               placeholder="Password"
+              autoComplete="new-password"
             />
             <div className="login-actions">
               <button type="submit" disabled={isWorking}>
                 {isWorking ? "Working..." : "Log in"}
               </button>
-              <button type="button" disabled={isWorking} onClick={handleSignup}>
-                {isWorking ? "Working..." : "Sign up"}
+              <button type="button" disabled={isWorking} onClick={openSignupDialog}>
+                Sign up
               </button>
             </div>
           </form>
           <p className="status">{status}</p>
           {error ? <p className="error">{error}</p> : null}
+          {isSignupOpen ? (
+            <div className="auth-overlay" role="presentation">
+              <section
+                className="auth-panel"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="signup-title"
+              >
+                <div className="settings-header">
+                  <h2 id="signup-title">Sign up</h2>
+                  <button
+                    type="button"
+                    className="settings-close-button"
+                    onClick={() => setIsSignupOpen(false)}
+                    aria-label="Close signup"
+                    disabled={isWorking}
+                  >
+                    Close
+                  </button>
+                </div>
+                <form className="signup-form" onSubmit={handleSignup} autoComplete="off">
+                  <input
+                    type="email"
+                    name="signup-email"
+                    value={signupForm.email}
+                    onChange={(event) =>
+                      setSignupForm((current) => ({
+                        ...current,
+                        email: event.target.value,
+                      }))
+                    }
+                    placeholder="Email"
+                    autoComplete="email"
+                    required
+                  />
+                  <input
+                    type="text"
+                    name="signup-username"
+                    value={signupForm.username}
+                    onChange={(event) =>
+                      setSignupForm((current) => ({
+                        ...current,
+                        username: event.target.value,
+                      }))
+                    }
+                    placeholder="Username"
+                    autoComplete="username"
+                    required
+                  />
+                  <input
+                    type="password"
+                    name="signup-password"
+                    value={signupForm.password}
+                    onChange={(event) =>
+                      setSignupForm((current) => ({
+                        ...current,
+                        password: event.target.value,
+                      }))
+                    }
+                    placeholder="Password"
+                    autoComplete="new-password"
+                    required
+                  />
+                  <button type="submit" disabled={isWorking}>
+                    {isWorking ? "Working..." : "Create account"}
+                  </button>
+                </form>
+              </section>
+            </div>
+          ) : null}
         </div>
       </main>
     );
@@ -1058,60 +1343,16 @@ export default function App() {
                   <span />
                   <span />
                 </button>
-                {isMenuOpen ? (
-                  <div className="menu-dropdown">
-                    <button
-                      type="button"
-                      className="menu-item"
-                      onClick={() => {
-                        setStatus(`Profile: ${authUser?.username}`);
-                        setIsMenuOpen(false);
-                      }}
-                    >
-                      Profile
-                    </button>
-                    <button
-                      type="button"
-                      className="menu-item"
-                      onClick={() => {
-                        setStatus("Settings panel coming soon.");
-                        setIsMenuOpen(false);
-                      }}
-                    >
-                      Settings
-                    </button>
-                    <div className="menu-section">
-                      <p className="menu-label">Theme</p>
-                      <div className="theme-options">
-                        {AVAILABLE_THEMES.map((themeOption) => (
-                          <button
-                            key={themeOption}
-                            type="button"
-                            className={`menu-item ${theme === themeOption ? "active" : ""}`}
-                            onClick={() => {
-                              setTheme(themeOption);
-                              setStatus(`Theme changed to ${themeOption}.`);
-                              setIsMenuOpen(false);
-                            }}
-                          >
-                            {themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
+                {isMenuOpen ? renderMainMenu() : null}
               </div>
               <h1>DAY2DAY</h1>
             </div>
-            <button type="button" onClick={handleLogout}>
-              Log out
-            </button>
           </div>
 
           <p className="status">Logged in as: {authUser?.username}</p>
           <p className="status">{status}</p>
           {error ? <p className="error">{error}</p> : null}
+          {renderSettingsPanel()}
 
           <section className="dashboard-layout">
             <div className="calendar-panel">
@@ -1293,49 +1534,7 @@ export default function App() {
                 <span />
                 <span />
               </button>
-              {isMenuOpen ? (
-                <div className="menu-dropdown">
-                  <button
-                    type="button"
-                    className="menu-item"
-                    onClick={() => {
-                      setStatus(`Profile: ${authUser?.username}`);
-                      setIsMenuOpen(false);
-                    }}
-                  >
-                    Profile
-                  </button>
-                  <button
-                    type="button"
-                    className="menu-item"
-                    onClick={() => {
-                      setStatus("Settings panel coming soon.");
-                      setIsMenuOpen(false);
-                    }}
-                  >
-                    Settings
-                  </button>
-                  <div className="menu-section">
-                    <p className="menu-label">Theme</p>
-                    <div className="theme-options">
-                      {AVAILABLE_THEMES.map((themeOption) => (
-                        <button
-                          key={themeOption}
-                          type="button"
-                          className={`menu-item ${theme === themeOption ? "active" : ""}`}
-                          onClick={() => {
-                            setTheme(themeOption);
-                            setStatus(`Theme changed to ${themeOption}.`);
-                            setIsMenuOpen(false);
-                          }}
-                        >
-                          {themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              ) : null}
+              {isMenuOpen ? renderMainMenu() : null}
             </div>
             <h1>My Files</h1>
           </div>
@@ -1343,15 +1542,13 @@ export default function App() {
             <button type="button" onClick={() => setPage("dashboard")}>
               Main Page
             </button>
-            <button type="button" onClick={handleLogout}>
-              Log out
-            </button>
           </div>
         </div>
 
         <p className="status">Logged in as: {authUser?.username}</p>
         <p className="status">{status}</p>
         {error ? <p className="error">{error}</p> : null}
+        {renderSettingsPanel()}
 
         <input
           ref={fileInputRef}
@@ -1420,6 +1617,25 @@ export default function App() {
                 <p className="status">Drag files into folders, create folders, and rename files.</p>
               </div>
               <div className="toolbar-actions">
+                <div className="file-search">
+                  <input
+                    type="search"
+                    value={fileSearchQuery}
+                    onChange={(event) => setFileSearchQuery(event.target.value)}
+                    placeholder="Search files"
+                    aria-label="Search files and folders"
+                  />
+                  {fileSearchQuery ? (
+                    <button
+                      type="button"
+                      className="search-clear-button"
+                      onClick={() => setFileSearchQuery("")}
+                      aria-label="Clear file search"
+                    >
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
                 <button
                   type="button"
                   className="select-button"
@@ -1444,13 +1660,6 @@ export default function App() {
                   disabled={isWorking || selectedItems.length === 0}
                 >
                   Delete selected
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDeleteCurrentFolder}
-                  disabled={isWorking || currentFolderId == null}
-                >
-                  Delete current folder
                 </button>
               </div>
             </div>
@@ -1482,8 +1691,13 @@ export default function App() {
                     <p>This folder is empty.</p>
                     <p>Import files or create a folder to get started.</p>
                   </div>
+                ) : visibleEntries.length === 0 ? (
+                  <div className="empty-state">
+                    <p>No files or folders match "{fileSearchQuery}".</p>
+                    <p>Clear the search to show everything in this folder.</p>
+                  </div>
                 ) : (
-                  currentEntries.map((entry) =>
+                  visibleEntries.map((entry) =>
                     entry.item_type === "folder" ? (
                       <button
                         key={`folder-${entry.id}`}

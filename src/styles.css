@@ -103,6 +103,31 @@ h2 {
   gap: 8px;
 }
 
+.auth-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 96px 24px 24px;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 20;
+  overflow: auto;
+}
+
+.auth-panel {
+  width: min(460px, 100%);
+  border: 1px solid var(--border);
+  background: var(--panel);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.24);
+}
+
+.signup-form {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+}
+
 input,
 button {
   font: inherit;
@@ -216,6 +241,69 @@ button:disabled {
 .theme-options {
   display: grid;
   gap: 4px;
+}
+
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 72px 24px 24px;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 20;
+  overflow: auto;
+}
+
+.settings-panel {
+  width: min(560px, 100%);
+  border: 1px solid var(--border);
+  background: var(--panel);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.24);
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-muted);
+}
+
+.settings-close-button {
+  flex: 0 0 auto;
+}
+
+.settings-section {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-section:last-child {
+  border-bottom: 0;
+}
+
+.settings-section h3 {
+  margin: 0 0 12px;
+}
+
+.password-form {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-theme-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.settings-theme-button.active {
+  border-color: var(--accent);
+  background: var(--panel-muted);
+  color: var(--accent);
 }
 
 .dashboard-layout {
@@ -454,7 +542,23 @@ button:disabled {
 .toolbar-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
+}
+
+.file-search {
+  display: flex;
+  align-items: stretch;
+  min-width: min(320px, 100%);
+}
+
+.file-search input {
+  min-width: 0;
+  flex: 1;
+}
+
+.search-clear-button {
+  border-left: 0;
 }
 
 .explorer-breadcrumbs {
@@ -626,6 +730,10 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
+  .auth-overlay {
+    padding: 24px 12px;
+  }
+
   .top-row {
     flex-direction: column;
     align-items: flex-start;
@@ -638,6 +746,14 @@ button:disabled {
   .top-actions {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .settings-overlay {
+    padding: 24px 12px;
+  }
+
+  .settings-theme-options {
+    grid-template-columns: 1fr;
   }
 
   .explorer {
@@ -661,6 +777,11 @@ button:disabled {
   .explorer-toolbar {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .toolbar-actions,
+  .file-search {
+    width: 100%;
   }
 
   .explorer-table-head,
