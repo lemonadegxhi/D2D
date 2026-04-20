@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import DashboardPage from "./components/DashboardPage";
+import FilesPage from "./components/FilesPage";
+import LoginPage from "./components/LoginPage";
 import {
   browseFiles,
   changePassword,
@@ -17,305 +20,33 @@ import {
   signup,
   uploadUserFile,
 } from "./lib/api";
+import { buildCalendarDays, getMonthDateKey, getTodayDateInputValue } from "./lib/calendarUtils";
+import { formatBytes, formatDate } from "./lib/formatters";
+import {
+  extractDroppedFiles,
+  extractDocxText,
+  getFileCategory,
+  getFilePreviewType,
+  getItemFromEntry,
+  getSelectionKey,
+  normalizeRelativePath,
+  toBase64,
+} from "./lib/fileUtils";
+import { getStoredTheme, getThemeStorageKey } from "./lib/theme";
 
 const initialCredentials = {
   username: "",
   password: "",
 };
-const AVAILABLE_THEMES = ["light", "dark", "sand"];
 
-function getThemeStorageKey(username) {
-  return `day2day-theme:${String(username || "").trim().toLowerCase()}`;
-}
-
-function getStoredTheme(username) {
-  if (typeof window === "undefined" || !username) {
-    return "light";
-  }
-
-  const storedTheme = window.localStorage.getItem(getThemeStorageKey(username));
-  return AVAILABLE_THEMES.includes(storedTheme) ? storedTheme : "light";
-}
-
-function formatBytes(bytes) {
-  if (!bytes) {
-    return "0 B";
-  }
-
-  const units = ["B", "KB", "MB", "GB"];
-  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  const value = bytes / 1024 ** exponent;
-
-  return `${value.toFixed(value >= 10 || exponent === 0 ? 0 : 1)} ${units[exponent]}`;
-}
-
-function formatDate(value) {
-  if (!value) {
-    return "-";
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(value));
-}
-
-function getFileCategory(file) {
-  const mimeType = String(file?.mime_type || "").toLowerCase();
-  const name = String(file?.original_name || "").toLowerCase();
-
-  if (mimeType.startsWith("image/")) {
-    return "Image";
-  }
-
-  if (mimeType.startsWith("audio/")) {
-    return "Audio";
-  }
-
-  if (mimeType.startsWith("video/")) {
-    return "Video";
-  }
-
-  if (
-    mimeType.includes("zip") ||
-    mimeType.includes("compressed") ||
-    name.endsWith(".zip") ||
-    name.endsWith(".rar") ||
-    name.endsWith(".7z")
-  ) {
-    return "Archive";
-  }
-
-  if (name.includes(".")) {
-    return `${name.split(".").pop().toUpperCase()} file`;
-  }
-
-  return "File";
-}
-
-function isPdfFile(file) {
-  const mimeType = String(file?.mime_type || file?.type || "").toLowerCase();
-  const name = String(file?.original_name || file?.name || "").toLowerCase();
-
-  return mimeType.includes("pdf") || name.endsWith(".pdf");
-}
-
-function toBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-
-    reader.onload = () => {
-      const result = typeof reader.result === "string" ? reader.result : "";
-      const base64 = result.split(",")[1];
-
-      if (!base64) {
-        reject(new Error("Failed to read file."));
-        return;
-      }
-
-      resolve(base64);
-    };
-
-    reader.onerror = () => reject(new Error("Failed to read file."));
-    reader.readAsDataURL(file);
-  });
-}
-
-function normalizeRelativePath(value) {
-  return String(value || "")
-    .replace(/\\/g, "/")
-    .replace(/^\/+|\/+$/g, "");
-}
-
-function getSelectionKey(item) {
-  return `${item.type}:${item.id}`;
-}
-
-function getItemFromEntry(entry) {
-  return {
-    type: entry.item_type,
-    id: entry.id,
-  };
-}
-
-function buildCalendarDays(baseDate = new Date()) {
-  const year = baseDate.getFullYear();
-  const month = baseDate.getMonth();
-  const firstDay = new Date(year, month, 1);
-  const startWeekday = firstDay.getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells = [];
-  const today = new Date();
-
-  for (let index = 0; index < startWeekday; index += 1) {
-    cells.push({
-      key: `empty-start-${index}`,
-      label: "",
-      dateKey: null,
-      isCurrentMonth: false,
-      isToday: false,
-    });
-  }
-
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    const isToday =
-      day === today.getDate() &&
-      month === today.getMonth() &&
-      year === today.getFullYear();
-
-    cells.push({
-      key: `day-${day}`,
-      label: String(day),
-      dateKey: `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
-      isCurrentMonth: true,
-      isToday,
-    });
-  }
-
-  while (cells.length % 7 !== 0) {
-    cells.push({
-      key: `empty-end-${cells.length}`,
-      label: "",
-      dateKey: null,
-      isCurrentMonth: false,
-      isToday: false,
-    });
-  }
-
-  return {
-    monthLabel: new Intl.DateTimeFormat(undefined, {
-      month: "long",
-      year: "numeric",
-    }).format(firstDay),
-    weekdayLabels: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
-    cells,
-  };
-}
-
-async function readEntry(entry, currentPath = "") {
-  if (!entry) {
-    return [];
-  }
-
-  if (entry.isFile) {
-    return new Promise((resolve, reject) => {
-      entry.file(
-        (file) => {
-          const relativePath = normalizeRelativePath(
-            [currentPath, entry.name].filter(Boolean).join("/")
-          );
-          resolve([{ file, relativePath }]);
-        },
-        () => reject(new Error("Failed to read dropped file."))
-      );
-    });
-  }
-
-  if (!entry.isDirectory) {
-    return [];
-  }
-
-  const reader = entry.createReader();
-  const children = [];
-
-  async function readBatch() {
-    return new Promise((resolve, reject) => {
-      reader.readEntries(resolve, () => reject(new Error("Failed to read dropped folder.")));
-    });
-  }
-
-  while (true) {
-    const batch = await readBatch();
-
-    if (batch.length === 0) {
-      break;
-    }
-
-    children.push(...batch);
-  }
-
-  const nestedGroups = await Promise.all(
-    children.map((child) => readEntry(child, [currentPath, entry.name].filter(Boolean).join("/")))
-  );
-
-  return nestedGroups.flat();
-}
-
-async function extractDroppedFiles(dataTransfer) {
-  const items = Array.from(dataTransfer?.items || []);
-  const entryReaders = items
-    .map((item) =>
-      item.kind === "file" && typeof item.webkitGetAsEntry === "function"
-        ? item.webkitGetAsEntry()
-        : null
-    )
-    .filter(Boolean);
-
-  if (entryReaders.length > 0) {
-    const groups = await Promise.all(entryReaders.map((entry) => readEntry(entry)));
-    return groups.flat();
-  }
-
-  return Array.from(dataTransfer?.files || []).map((file) => ({
-    file,
-    relativePath: normalizeRelativePath(file.webkitRelativePath || file.name),
-  }));
-}
-
-function FolderTree({ nodes, activeFolderId, onSelectFolder, onDropFile }) {
-  return (
-    <div className="folder-tree">
-      {nodes.map((node) => (
-        <div key={node.id} className="folder-tree-node">
-          <button
-            type="button"
-            className={`folder-tree-item ${activeFolderId === node.id ? "active" : ""}`}
-            onClick={() => onSelectFolder(node.id)}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={(event) => {
-              event.preventDefault();
-              onDropFile(event, node.id);
-            }}
-          >
-            <span className="folder-icon">▸</span>
-            <span>{node.name}</span>
-          </button>
-          {node.children.length > 0 ? (
-            <FolderTree
-              nodes={node.children}
-              activeFolderId={activeFolderId}
-              onSelectFolder={onSelectFolder}
-              onDropFile={onDropFile}
-            />
-          ) : null}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function getMonthDateKey(value) {
-  return String(value || "").slice(0, 10);
-}
-
-function getTodayDateInputValue() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function formatCalendarTimeRange(eventItem) {
-  if (eventItem.startTime && eventItem.endTime) {
-    return `${eventItem.startTime}-${eventItem.endTime}`;
-  }
-
-  if (eventItem.startTime) {
-    return eventItem.startTime;
-  }
-
-  return "All day";
-}
+const initialBrowserData = {
+  storageUsedBytes: 0,
+  currentFolder: { id: null, name: "", parentFolderId: null },
+  breadcrumbs: [],
+  folderTree: [],
+  folders: [],
+  files: [],
+};
 
 export default function App() {
   const [credentials, setCredentials] = useState(initialCredentials);
@@ -357,15 +88,10 @@ export default function App() {
     username: "",
     password: "",
   });
-  const [browserData, setBrowserData] = useState({
-    currentFolder: { id: null, name: "", parentFolderId: null },
-    breadcrumbs: [],
-    folderTree: [],
-    folders: [],
-    files: [],
-  });
+  const [browserData, setBrowserData] = useState(initialBrowserData);
   const fileInputRef = useRef(null);
   const dashboardDate = useMemo(() => new Date(), []);
+
   const calendarEventMap = useMemo(() => {
     const map = new Map();
 
@@ -385,6 +111,7 @@ export default function App() {
 
     return map;
   }, [calendarEvents]);
+
   const upcomingCalendarEvents = useMemo(
     () =>
       [...calendarEvents].sort((left, right) => {
@@ -395,8 +122,8 @@ export default function App() {
     [calendarEvents]
   );
   const calendar = useMemo(() => buildCalendarDays(dashboardDate), [dashboardDate]);
-
   const canUpload = useMemo(() => Boolean(authUser?.username), [authUser]);
+
   const currentEntries = useMemo(
     () => [
       ...browserData.folders.map((folder) => ({ ...folder, item_type: "folder" })),
@@ -404,6 +131,7 @@ export default function App() {
     ],
     [browserData.files, browserData.folders]
   );
+
   const visibleEntries = useMemo(() => {
     const query = fileSearchQuery.trim().toLowerCase();
 
@@ -428,14 +156,17 @@ export default function App() {
         .includes(query);
     });
   }, [currentEntries, fileSearchQuery]);
+
   const currentSelectableItems = useMemo(
     () => visibleEntries.map((entry) => getItemFromEntry(entry)),
     [visibleEntries]
   );
+
   const selectedKeySet = useMemo(
     () => new Set(selectedItems.map((item) => getSelectionKey(item))),
     [selectedItems]
   );
+
   const selectedFile = useMemo(() => {
     if (selectedItems.length !== 1 || selectedItems[0].type !== "file") {
       return null;
@@ -443,6 +174,7 @@ export default function App() {
 
     return browserData.files.find((file) => file.id === selectedItems[0].id) ?? null;
   }, [browserData.files, selectedItems]);
+
   const selectedFolder = useMemo(() => {
     if (selectedItems.length !== 1 || selectedItems[0].type !== "folder") {
       return null;
@@ -495,6 +227,24 @@ export default function App() {
     };
   }, [pdfPreview]);
 
+  useEffect(() => {
+    if (!authUser?.username || page !== "dashboard") {
+      return;
+    }
+
+    loadCalendarEvents(authUser.username);
+  }, [authUser, dashboardDate, page]);
+
+  useEffect(() => {
+    if (!fileSearchQuery.trim()) {
+      return;
+    }
+
+    const visibleKeys = new Set(currentSelectableItems.map((item) => getSelectionKey(item)));
+    setSelectedItems((current) => current.filter((item) => visibleKeys.has(getSelectionKey(item))));
+    setSelectionAnchorKey((current) => (current && visibleKeys.has(current) ? current : null));
+  }, [currentSelectableItems, fileSearchQuery]);
+
   async function loadCalendarEvents(username) {
     if (!username) {
       return;
@@ -517,24 +267,6 @@ export default function App() {
       setIsCalendarLoading(false);
     }
   }
-
-  useEffect(() => {
-    if (!authUser?.username || page !== "dashboard") {
-      return;
-    }
-
-    loadCalendarEvents(authUser.username);
-  }, [authUser, dashboardDate, page]);
-
-  useEffect(() => {
-    if (!fileSearchQuery.trim()) {
-      return;
-    }
-
-    const visibleKeys = new Set(currentSelectableItems.map((item) => getSelectionKey(item)));
-    setSelectedItems((current) => current.filter((item) => visibleKeys.has(getSelectionKey(item))));
-    setSelectionAnchorKey((current) => (current && visibleKeys.has(current) ? current : null));
-  }, [currentSelectableItems, fileSearchQuery]);
 
   async function loadFolderView(username, folderId = currentFolderId) {
     const payload = await browseFiles(username, folderId);
@@ -589,7 +321,9 @@ export default function App() {
 
       setSelectedItems((current) => {
         if (ctrlPressed) {
-          const merged = new Map(current.map((currentItem) => [getSelectionKey(currentItem), currentItem]));
+          const merged = new Map(
+            current.map((currentItem) => [getSelectionKey(currentItem), currentItem])
+          );
 
           for (const rangeItem of rangeItems) {
             merged.set(getSelectionKey(rangeItem), rangeItem);
@@ -641,13 +375,7 @@ export default function App() {
       setStatus("Logged in. Import files, create folders, or drag files into folders.");
     } catch (loginError) {
       setAuthUser(null);
-      setBrowserData({
-        currentFolder: { id: null, name: "", parentFolderId: null },
-        breadcrumbs: [],
-        folderTree: [],
-        folders: [],
-        files: [],
-      });
+      setBrowserData(initialBrowserData);
       setSelectedItems([]);
       setSelectionAnchorKey(null);
       setError(loginError.message);
@@ -662,17 +390,10 @@ export default function App() {
     setError("");
 
     try {
-      const payload = await signup(
-        signupForm.email,
-        signupForm.username,
-        signupForm.password
-      );
+      const payload = await signup(signupForm.email, signupForm.username, signupForm.password);
       setTheme(getStoredTheme(payload.user.username));
       setAuthUser(payload.user);
-      setCredentials({
-        username: "",
-        password: "",
-      });
+      setCredentials(initialCredentials);
       setSignupForm({
         email: "",
         username: "",
@@ -684,13 +405,7 @@ export default function App() {
       setStatus("Account created. Start by creating folders or importing files.");
     } catch (signupError) {
       setAuthUser(null);
-      setBrowserData({
-        currentFolder: { id: null, name: "", parentFolderId: null },
-        breadcrumbs: [],
-        folderTree: [],
-        folders: [],
-        files: [],
-      });
+      setBrowserData(initialBrowserData);
       setSelectedItems([]);
       setSelectionAnchorKey(null);
       setError(signupError.message);
@@ -791,7 +506,9 @@ export default function App() {
       return;
     }
 
-    if (!isPdfFile(file)) {
+    const previewType = getFilePreviewType(file);
+
+    if (!previewType) {
       await handleDownload(file);
       return;
     }
@@ -804,7 +521,8 @@ export default function App() {
 
     try {
       const blob = await downloadFile(authUser.username, file.id);
-      const nextUrl = URL.createObjectURL(blob);
+      const nextUrl = previewType === "docx" ? null : URL.createObjectURL(blob);
+      const docxText = previewType === "docx" ? await extractDocxText(blob) : "";
 
       setPdfPreview((current) => {
         if (current?.url) {
@@ -813,6 +531,8 @@ export default function App() {
 
         return {
           name: file.original_name,
+          type: previewType,
+          text: docxText,
           url: nextUrl,
         };
       });
@@ -941,9 +661,7 @@ export default function App() {
       setSelectedItems([]);
       setSelectionAnchorKey(null);
       await loadFolderView(authUser.username, currentFolderId);
-      setStatus(
-        `Deleted ${selectedItems.length} item${selectedItems.length === 1 ? "" : "s"}.`
-      );
+      setStatus(`Deleted ${selectedItems.length} item${selectedItems.length === 1 ? "" : "s"}.`);
     } catch (deleteError) {
       setError(deleteError.message);
     } finally {
@@ -1025,11 +743,7 @@ export default function App() {
     setError("");
 
     try {
-      await changePassword(
-        authUser.username,
-        passwordForm.currentPassword,
-        passwordForm.newPassword
-      );
+      await changePassword(authUser.username, passwordForm.currentPassword, passwordForm.newPassword);
       setPasswordForm({
         currentPassword: "",
         newPassword: "",
@@ -1041,6 +755,16 @@ export default function App() {
     } finally {
       setIsWorking(false);
     }
+  }
+
+  function handleOpenSettings() {
+    setIsSettingsOpen(true);
+    setIsMenuOpen(false);
+  }
+
+  function handleThemeChange(themeOption) {
+    setTheme(themeOption);
+    setStatus(`Theme changed to ${themeOption}.`);
   }
 
   function handleLogout() {
@@ -1070,13 +794,7 @@ export default function App() {
       username: "",
       password: "",
     });
-    setBrowserData({
-      currentFolder: { id: null, name: "", parentFolderId: null },
-      breadcrumbs: [],
-      folderTree: [],
-      folders: [],
-      files: [],
-    });
+    setBrowserData(initialBrowserData);
     setError("");
     setStatus("Log in to upload files.");
     setIsSignupOpen(false);
@@ -1085,752 +803,105 @@ export default function App() {
     setPage("login");
   }
 
-  function renderMainMenu() {
-    return (
-      <div className="menu-dropdown">
-        <button
-          type="button"
-          className="menu-item"
-          onClick={() => {
-            setIsSettingsOpen(true);
-            setIsMenuOpen(false);
-          }}
-        >
-          Settings
-        </button>
-        <button
-          type="button"
-          className="menu-item"
-          onClick={handleLogout}
-        >
-          Log out
-        </button>
-      </div>
-    );
-  }
-
-  function renderSettingsPanel() {
-    if (!isSettingsOpen) {
-      return null;
-    }
-
-    return (
-      <div className="settings-overlay" role="presentation">
-        <section
-          className="settings-panel"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="settings-title"
-        >
-          <div className="settings-header">
-            <h2 id="settings-title">Settings</h2>
-            <button
-              type="button"
-              className="settings-close-button"
-              onClick={() => setIsSettingsOpen(false)}
-              aria-label="Close settings"
-            >
-              Close
-            </button>
-          </div>
-
-          <section className="settings-section">
-            <h3>Profile</h3>
-            <p className="status">Username: {authUser?.username}</p>
-            <form className="password-form" onSubmit={handleChangePassword} autoComplete="off">
-              <input
-                type="password"
-                name="current-day2day-password"
-                value={passwordForm.currentPassword}
-                onChange={(event) =>
-                  setPasswordForm((current) => ({
-                    ...current,
-                    currentPassword: event.target.value,
-                  }))
-                }
-                placeholder="Current password"
-                autoComplete="current-password"
-              />
-              <input
-                type="password"
-                name="new-day2day-password"
-                value={passwordForm.newPassword}
-                onChange={(event) =>
-                  setPasswordForm((current) => ({
-                    ...current,
-                    newPassword: event.target.value,
-                  }))
-                }
-                placeholder="New password"
-                autoComplete="new-password"
-              />
-              <input
-                type="password"
-                name="confirm-day2day-password"
-                value={passwordForm.confirmPassword}
-                onChange={(event) =>
-                  setPasswordForm((current) => ({
-                    ...current,
-                    confirmPassword: event.target.value,
-                  }))
-                }
-                placeholder="Confirm new password"
-                autoComplete="new-password"
-              />
-              <button type="submit" disabled={isWorking}>
-                {isWorking ? "Working..." : "Change password"}
-              </button>
-            </form>
-          </section>
-
-          <section className="settings-section">
-            <h3>Theme</h3>
-            <div className="settings-theme-options">
-              {AVAILABLE_THEMES.map((themeOption) => (
-                <button
-                  key={themeOption}
-                  type="button"
-                  className={`settings-theme-button ${theme === themeOption ? "active" : ""}`}
-                  onClick={() => {
-                    setTheme(themeOption);
-                    setStatus(`Theme changed to ${themeOption}.`);
-                  }}
-                >
-                  {themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}
-                </button>
-              ))}
-            </div>
-          </section>
-        </section>
-      </div>
-    );
-  }
-
   if (page === "login") {
     return (
-      <main className="app">
-        <div className="container login-page">
-          <h1>DAY2DAY Login</h1>
-          <p className="health">{healthStatus}</p>
-          <form className="login" onSubmit={handleLogin} autoComplete="off">
-            <input
-              type="text"
-              name="day2day-username"
-              value={credentials.username}
-              onChange={(event) =>
-                setCredentials((current) => ({
-                  ...current,
-                  username: event.target.value,
-                }))
-              }
-              placeholder="Username"
-              autoComplete="off"
-            />
-            <input
-              type="password"
-              name="day2day-password"
-              value={credentials.password}
-              onChange={(event) =>
-                setCredentials((current) => ({
-                  ...current,
-                  password: event.target.value,
-                }))
-              }
-              placeholder="Password"
-              autoComplete="new-password"
-            />
-            <div className="login-actions">
-              <button type="submit" disabled={isWorking}>
-                {isWorking ? "Working..." : "Log in"}
-              </button>
-              <button type="button" disabled={isWorking} onClick={openSignupDialog}>
-                Sign up
-              </button>
-            </div>
-          </form>
-          <p className="status">{status}</p>
-          {error ? <p className="error">{error}</p> : null}
-          {isSignupOpen ? (
-            <div className="auth-overlay" role="presentation">
-              <section
-                className="auth-panel"
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="signup-title"
-              >
-                <div className="settings-header">
-                  <h2 id="signup-title">Sign up</h2>
-                  <button
-                    type="button"
-                    className="settings-close-button"
-                    onClick={() => setIsSignupOpen(false)}
-                    aria-label="Close signup"
-                    disabled={isWorking}
-                  >
-                    Close
-                  </button>
-                </div>
-                <form className="signup-form" onSubmit={handleSignup} autoComplete="off">
-                  <input
-                    type="email"
-                    name="signup-email"
-                    value={signupForm.email}
-                    onChange={(event) =>
-                      setSignupForm((current) => ({
-                        ...current,
-                        email: event.target.value,
-                      }))
-                    }
-                    placeholder="Email"
-                    autoComplete="email"
-                    required
-                  />
-                  <input
-                    type="text"
-                    name="signup-username"
-                    value={signupForm.username}
-                    onChange={(event) =>
-                      setSignupForm((current) => ({
-                        ...current,
-                        username: event.target.value,
-                      }))
-                    }
-                    placeholder="Username"
-                    autoComplete="username"
-                    required
-                  />
-                  <input
-                    type="password"
-                    name="signup-password"
-                    value={signupForm.password}
-                    onChange={(event) =>
-                      setSignupForm((current) => ({
-                        ...current,
-                        password: event.target.value,
-                      }))
-                    }
-                    placeholder="Password"
-                    autoComplete="new-password"
-                    required
-                  />
-                  <button type="submit" disabled={isWorking}>
-                    {isWorking ? "Working..." : "Create account"}
-                  </button>
-                </form>
-              </section>
-            </div>
-          ) : null}
-        </div>
-      </main>
+      <LoginPage
+        credentials={credentials}
+        error={error}
+        healthStatus={healthStatus}
+        isSignupOpen={isSignupOpen}
+        isWorking={isWorking}
+        onCloseSignup={() => setIsSignupOpen(false)}
+        onLogin={handleLogin}
+        onOpenSignup={openSignupDialog}
+        onSignup={handleSignup}
+        setCredentials={setCredentials}
+        setSignupForm={setSignupForm}
+        signupForm={signupForm}
+        status={status}
+      />
     );
   }
 
   if (page === "dashboard") {
     return (
-      <main className="app">
-        <div className="container dashboard-page">
-          <div className="top-row">
-            <div className="top-left">
-              <div className="menu-shell">
-                <button
-                  type="button"
-                  className="menu-button"
-                  aria-label="Open menu"
-                  aria-expanded={isMenuOpen}
-                  onClick={() => setIsMenuOpen((current) => !current)}
-                >
-                  <span />
-                  <span />
-                  <span />
-                </button>
-                {isMenuOpen ? renderMainMenu() : null}
-              </div>
-              <h1>DAY2DAY</h1>
-            </div>
-          </div>
-
-          <p className="status">Logged in as: {authUser?.username}</p>
-          <p className="status">{status}</p>
-          {error ? <p className="error">{error}</p> : null}
-          {renderSettingsPanel()}
-
-          <section className="dashboard-layout">
-            <div className="calendar-panel">
-              <div className="calendar-header">
-                <h2>{calendar.monthLabel}</h2>
-                <p className="status">This month at a glance</p>
-              </div>
-              <div className="calendar-grid calendar-weekdays">
-                {calendar.weekdayLabels.map((label) => (
-                  <span key={label} className="calendar-weekday">
-                    {label}
-                  </span>
-                ))}
-              </div>
-              <div className="calendar-grid">
-                {calendar.cells.map((cell) => (
-                  <div
-                    key={cell.key}
-                    className={`calendar-cell ${cell.isCurrentMonth ? "" : "muted"} ${
-                      cell.isToday ? "today" : ""
-                    }`}
-                  >
-                    <span className="calendar-day-label">{cell.label}</span>
-                    {cell.isCurrentMonth ? (
-                      <div className="calendar-events">
-                        {(calendarEventMap.get(cell.dateKey) || [])
-                          .slice(0, 3)
-                          .map((eventItem) => (
-                            <span
-                              key={eventItem.id}
-                              className="calendar-event-pill"
-                              title={
-                                eventItem.description
-                                  ? `${eventItem.title} - ${eventItem.description}`
-                                  : eventItem.title
-                              }
-                            >
-                              {eventItem.startTime ? `${eventItem.startTime} ` : ""}
-                              {eventItem.title}
-                            </span>
-                          ))}
-                        {(calendarEventMap.get(cell.dateKey) || []).length > 3 ? (
-                          <span className="calendar-more-events">
-                            +
-                            {(calendarEventMap.get(cell.dateKey) || []).length - 3}{" "}
-                            more
-                          </span>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="dashboard-actions-panel">
-              <div className="dashboard-card">
-                <h2>File Explorer</h2>
-                <p>Open the file app to manage folders, upload documents, and preview PDFs.</p>
-                <button
-                  type="button"
-                  onClick={() => setPage("files")}
-                >
-                  Go to Files
-                </button>
-              </div>
-              <div className="dashboard-card">
-                <h2>Calendar Events</h2>
-                <p>Add your own events here. They are saved to your account and shown on the monthly calendar.</p>
-                {calendarError ? <p className="error">{calendarError}</p> : null}
-                <form className="calendar-form" onSubmit={handleCreateCalendarEvent}>
-                  <input
-                    type="text"
-                    value={calendarForm.title}
-                    onChange={(event) =>
-                      setCalendarForm((current) => ({
-                        ...current,
-                        title: event.target.value,
-                      }))
-                    }
-                    placeholder="Event title"
-                    maxLength={120}
-                  />
-                  <input
-                    type="date"
-                    value={calendarForm.eventDate}
-                    onChange={(event) =>
-                      setCalendarForm((current) => ({
-                        ...current,
-                        eventDate: event.target.value,
-                      }))
-                    }
-                  />
-                  <div className="calendar-form-times">
-                    <input
-                      type="time"
-                      value={calendarForm.startTime}
-                      onChange={(event) =>
-                        setCalendarForm((current) => ({
-                          ...current,
-                          startTime: event.target.value,
-                        }))
-                      }
-                    />
-                    <input
-                      type="time"
-                      value={calendarForm.endTime}
-                      onChange={(event) =>
-                        setCalendarForm((current) => ({
-                          ...current,
-                          endTime: event.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                  <input
-                    type="text"
-                    value={calendarForm.description}
-                    onChange={(event) =>
-                      setCalendarForm((current) => ({
-                        ...current,
-                        description: event.target.value,
-                      }))
-                    }
-                    placeholder="Description (optional)"
-                    maxLength={240}
-                  />
-                  <button type="submit" disabled={isCalendarSaving}>
-                    {isCalendarSaving ? "Saving..." : "Add event"}
-                  </button>
-                </form>
-                {isCalendarLoading ? <p className="status">Loading calendar events...</p> : null}
-                <div className="calendar-list">
-                  {upcomingCalendarEvents.length === 0 ? (
-                    <p className="status">No events added for this month yet.</p>
-                  ) : (
-                    upcomingCalendarEvents.map((eventItem) => (
-                      <div key={eventItem.id} className="calendar-list-item">
-                        <div>
-                          <strong>{eventItem.title}</strong>
-                          <p>
-                            {eventItem.eventDate} · {formatCalendarTimeRange(eventItem)}
-                          </p>
-                          {eventItem.description ? <p>{eventItem.description}</p> : null}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteCalendarEvent(eventItem.id, eventItem.title)}
-                          disabled={isCalendarSaving}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-          </section>
-        </div>
-      </main>
+      <DashboardPage
+        authUser={authUser}
+        calendar={calendar}
+        calendarError={calendarError}
+        calendarEventMap={calendarEventMap}
+        calendarForm={calendarForm}
+        error={error}
+        isCalendarLoading={isCalendarLoading}
+        isCalendarSaving={isCalendarSaving}
+        isMenuOpen={isMenuOpen}
+        isSettingsOpen={isSettingsOpen}
+        isWorking={isWorking}
+        onChangePassword={handleChangePassword}
+        onCreateCalendarEvent={handleCreateCalendarEvent}
+        onDeleteCalendarEvent={handleDeleteCalendarEvent}
+        onLogout={handleLogout}
+        onOpenSettings={handleOpenSettings}
+        onThemeChange={handleThemeChange}
+        passwordForm={passwordForm}
+        setCalendarForm={setCalendarForm}
+        setIsMenuOpen={setIsMenuOpen}
+        setIsSettingsOpen={setIsSettingsOpen}
+        setPage={setPage}
+        setPasswordForm={setPasswordForm}
+        status={status}
+        theme={theme}
+        upcomingCalendarEvents={upcomingCalendarEvents}
+      />
     );
   }
 
   return (
-    <main className="app">
-      <div className="container files-page">
-        <div className="top-row">
-          <div className="top-left">
-            <div className="menu-shell">
-              <button
-                type="button"
-                className="menu-button"
-                aria-label="Open menu"
-                aria-expanded={isMenuOpen}
-                onClick={() => setIsMenuOpen((current) => !current)}
-              >
-                <span />
-                <span />
-                <span />
-              </button>
-              {isMenuOpen ? renderMainMenu() : null}
-            </div>
-            <h1>My Files</h1>
-          </div>
-          <div className="top-actions">
-            <button type="button" onClick={() => setPage("dashboard")}>
-              Main Page
-            </button>
-          </div>
-        </div>
-
-        <p className="status">Logged in as: {authUser?.username}</p>
-        <p className="status">{status}</p>
-        {error ? <p className="error">{error}</p> : null}
-        {renderSettingsPanel()}
-
-        <input
-          ref={fileInputRef}
-          className="hidden-input"
-          type="file"
-          multiple
-          onChange={(event) => handleFilesSelected(event.target.files)}
-        />
-
-        <section
-          className={`explorer ${isDragging ? "dragging" : ""} ${!canUpload ? "disabled" : ""}`}
-          onDragOver={(event) => {
-            event.preventDefault();
-            if (canUpload) {
-              setIsDragging(true);
-            }
-          }}
-          onDragLeave={() => setIsDragging(false)}
-          onDrop={(event) => {
-            event.preventDefault();
-            setIsDragging(false);
-            if (draggedFileId != null) {
-              handleMoveFile(draggedFileId, currentFolderId);
-              return;
-            }
-            handleExternalDrop(event, currentFolderId);
-          }}
-        >
-          <aside className="explorer-sidebar">
-            <p className="explorer-sidebar-label">Folders</p>
-            <button
-              type="button"
-              className={`folder-tree-item root ${currentFolderId == null ? "active" : ""}`}
-              onClick={() => loadFolderView(authUser.username, null)}
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => {
-                event.preventDefault();
-                if (draggedFileId != null) {
-                  handleMoveFile(draggedFileId, null);
-                  return;
-                }
-                handleExternalDrop(event, null);
-              }}
-            >
-              <span className="folder-icon">▾</span>
-              <span>{authUser?.username}</span>
-            </button>
-            <FolderTree
-              nodes={browserData.folderTree}
-              activeFolderId={currentFolderId}
-              onSelectFolder={(folderId) => loadFolderView(authUser.username, folderId)}
-              onDropFile={(event, targetFolderId) => {
-                if (draggedFileId != null) {
-                  handleMoveFile(draggedFileId, targetFolderId);
-                  return;
-                }
-                handleExternalDrop(event, targetFolderId);
-              }}
-            />
-          </aside>
-
-          <div className="explorer-main">
-            <div className="explorer-toolbar">
-              <div>
-                <h2>File Explorer</h2>
-                <p className="status">Drag files into folders, create folders, and rename files.</p>
-              </div>
-              <div className="toolbar-actions">
-                <div className="file-search">
-                  <input
-                    type="search"
-                    value={fileSearchQuery}
-                    onChange={(event) => setFileSearchQuery(event.target.value)}
-                    placeholder="Search files"
-                    aria-label="Search files and folders"
-                  />
-                  {fileSearchQuery ? (
-                    <button
-                      type="button"
-                      className="search-clear-button"
-                      onClick={() => setFileSearchQuery("")}
-                      aria-label="Clear file search"
-                    >
-                      Clear
-                    </button>
-                  ) : null}
-                </div>
-                <button
-                  type="button"
-                  className="select-button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={!canUpload || isWorking}
-                >
-                  {isWorking ? "Working..." : "Import files"}
-                </button>
-                <button type="button" onClick={handleCreateFolder} disabled={isWorking}>
-                  New folder
-                </button>
-                <button
-                  type="button"
-                  onClick={handleRenameSelectedFile}
-                  disabled={isWorking || !selectedFile}
-                >
-                  Rename file
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDeleteSelectedItem}
-                  disabled={isWorking || selectedItems.length === 0}
-                >
-                  Delete selected
-                </button>
-              </div>
-            </div>
-
-            <div className="explorer-breadcrumbs">
-              {browserData.breadcrumbs.map((crumb, index) => (
-                <button
-                  key={`${crumb.id ?? "root"}-${index}`}
-                  type="button"
-                  className="breadcrumb-button"
-                  onClick={() => loadFolderView(authUser.username, crumb.id)}
-                >
-                  {crumb.name}
-                </button>
-              ))}
-            </div>
-
-            <div className="explorer-table">
-              <div className="explorer-table-head">
-                <span className="column-button name">Name</span>
-                <span className="column-button type">Type</span>
-                <span className="column-button modified">Date modified</span>
-                <span className="column-button size">Size</span>
-              </div>
-
-              <div className="explorer-table-body">
-                {currentEntries.length === 0 ? (
-                  <div className="empty-state">
-                    <p>This folder is empty.</p>
-                    <p>Import files or create a folder to get started.</p>
-                  </div>
-                ) : visibleEntries.length === 0 ? (
-                  <div className="empty-state">
-                    <p>No files or folders match "{fileSearchQuery}".</p>
-                    <p>Clear the search to show everything in this folder.</p>
-                  </div>
-                ) : (
-                  visibleEntries.map((entry) =>
-                    entry.item_type === "folder" ? (
-                      <button
-                        key={`folder-${entry.id}`}
-                        type="button"
-                        className={`file-row folder-row ${
-                          selectedKeySet.has(getSelectionKey({ type: "folder", id: entry.id })) ? "active" : ""
-                        }`}
-                        onClick={(event) => handleEntrySelection(event, entry)}
-                        onDoubleClick={() => loadFolderView(authUser.username, entry.id)}
-                        onDragOver={(event) => event.preventDefault()}
-                        onDrop={(event) => {
-                          event.preventDefault();
-                          if (draggedFileId != null) {
-                            handleMoveFile(draggedFileId, entry.id);
-                            return;
-                          }
-                          handleExternalDrop(event, entry.id);
-                        }}
-                      >
-                        <span className="file-cell name">📁 {entry.folder_name}</span>
-                        <span className="file-cell type">Folder</span>
-                        <span className="file-cell modified">{formatDate(entry.updated_at)}</span>
-                        <span className="file-cell size">-</span>
-                      </button>
-                    ) : (
-                      <button
-                        key={`file-${entry.id}`}
-                        type="button"
-                        draggable
-                        className={`file-row ${
-                          selectedKeySet.has(getSelectionKey({ type: "file", id: entry.id })) ? "active" : ""
-                        }`}
-                        onDragStart={() => setDraggedFileId(entry.id)}
-                        onDragEnd={() => setDraggedFileId(null)}
-                        onClick={(event) => handleEntrySelection(event, entry)}
-                        onDoubleClick={() => handleOpenFile(entry)}
-                      >
-                        <span className="file-cell name">{entry.original_name}</span>
-                        <span className="file-cell type">{getFileCategory(entry)}</span>
-                        <span className="file-cell modified">{formatDate(entry.updated_at)}</span>
-                        <span className="file-cell size">{formatBytes(entry.byte_size)}</span>
-                      </button>
-                    )
-                  )
-                )}
-              </div>
-            </div>
-          </div>
-
-          <aside className="details-pane">
-            <h2>Details</h2>
-            {selectedFile ? (
-              <>
-                <div className="details-card">
-                  <strong>{selectedFile.original_name}</strong>
-                  <p>{getFileCategory(selectedFile)}</p>
-                </div>
-                <dl className="details-list">
-                  <div>
-                    <dt>Owner</dt>
-                    <dd>{selectedFile.owner_username}</dd>
-                  </div>
-                  <div>
-                    <dt>Folder</dt>
-                    <dd>{browserData.currentFolder.name || authUser?.username}</dd>
-                  </div>
-                  <div>
-                    <dt>Modified</dt>
-                    <dd>{formatDate(selectedFile.updated_at)}</dd>
-                  </div>
-                  <div>
-                    <dt>Size</dt>
-                    <dd>{formatBytes(selectedFile.byte_size)}</dd>
-                  </div>
-                  <div>
-                    <dt>MIME type</dt>
-                    <dd>{selectedFile.mime_type}</dd>
-                  </div>
-                </dl>
-                <button type="button" onClick={() => handleDownload(selectedFile)}>
-                  Download selected
-                </button>
-                {isPdfFile(selectedFile) ? (
-                  <button type="button" onClick={() => handleOpenFile(selectedFile)}>
-                    Open PDF
-                  </button>
-                ) : null}
-              </>
-            ) : selectedItems.length > 1 ? (
-              <div className="details-card">
-                <strong>{selectedItems.length} items selected</strong>
-                <p>
-                  {selectedItems.filter((item) => item.type === "folder").length} folder
-                  {selectedItems.filter((item) => item.type === "folder").length === 1 ? "" : "s"} and{" "}
-                  {selectedItems.filter((item) => item.type === "file").length} file
-                  {selectedItems.filter((item) => item.type === "file").length === 1 ? "" : "s"} selected.
-                </p>
-              </div>
-            ) : selectedFolder ? (
-              <div className="details-card">
-                <strong>{selectedFolder.folder_name}</strong>
-                <p>Folder selected.</p>
-              </div>
-            ) : (
-              <div className="details-card">
-                <strong>No item selected</strong>
-                <p>Select a file or folder to manage it.</p>
-              </div>
-            )}
-          </aside>
-        </section>
-
-        {pdfPreview ? (
-          <div className="pdf-preview-overlay" onClick={handleClosePdfPreview}>
-            <div
-              className="pdf-preview-modal"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div className="pdf-preview-header">
-                <strong>{pdfPreview.name}</strong>
-                <button type="button" onClick={handleClosePdfPreview}>
-                  Close
-                </button>
-              </div>
-              <iframe
-                className="pdf-preview-frame"
-                src={pdfPreview.url}
-                title={pdfPreview.name}
-              />
-            </div>
-          </div>
-        ) : null}
-      </div>
-    </main>
+    <FilesPage
+      authUser={authUser}
+      browserData={browserData}
+      canUpload={canUpload}
+      currentEntries={currentEntries}
+      currentFolderId={currentFolderId}
+      draggedFileId={draggedFileId}
+      error={error}
+      fileInputRef={fileInputRef}
+      fileSearchQuery={fileSearchQuery}
+      isDragging={isDragging}
+      isMenuOpen={isMenuOpen}
+      isSettingsOpen={isSettingsOpen}
+      isWorking={isWorking}
+      onChangePassword={handleChangePassword}
+      onClosePdfPreview={handleClosePdfPreview}
+      onCreateFolder={handleCreateFolder}
+      onDeleteSelectedItem={handleDeleteSelectedItem}
+      onDownload={handleDownload}
+      onEntrySelection={handleEntrySelection}
+      onExternalDrop={handleExternalDrop}
+      onFilesSelected={handleFilesSelected}
+      onLoadFolderView={loadFolderView}
+      onLogout={handleLogout}
+      onMoveFile={handleMoveFile}
+      onOpenFile={handleOpenFile}
+      onOpenSettings={handleOpenSettings}
+      onRenameSelectedFile={handleRenameSelectedFile}
+      onThemeChange={handleThemeChange}
+      passwordForm={passwordForm}
+      pdfPreview={pdfPreview}
+      selectedFile={selectedFile}
+      selectedFolder={selectedFolder}
+      selectedItems={selectedItems}
+      selectedKeySet={selectedKeySet}
+      setDraggedFileId={setDraggedFileId}
+      setFileSearchQuery={setFileSearchQuery}
+      setIsDragging={setIsDragging}
+      setIsMenuOpen={setIsMenuOpen}
+      setIsSettingsOpen={setIsSettingsOpen}
+      setPage={setPage}
+      setPasswordForm={setPasswordForm}
+      status={status}
+      theme={theme}
+      visibleEntries={visibleEntries}
+    />
   );
 }

@@ -721,6 +721,32 @@ button:disabled {
   background: #525659;
 }
 
+.file-preview-image-shell {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  overflow: auto;
+  background: var(--panel-muted);
+}
+
+.file-preview-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.docx-preview-text {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 24px;
+  white-space: pre-wrap;
+  line-height: 1.6;
+  background: var(--panel);
+}
+
 @media (max-width: 700px) {
   .login {
     grid-template-columns: 1fr;

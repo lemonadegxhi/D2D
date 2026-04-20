@@ -120,6 +120,14 @@ async function buildBreadcrumbs(ownerUsername, folderRecord) {
 
 async function browseFolder(ownerUsername, folderId = null) {
   const folderRecord = await getFolderRecord(ownerUsername, folderId);
+  const storageUsagePromise = pool.query(
+    `
+      SELECT COALESCE(SUM(byte_size), 0) AS storage_used_bytes
+      FROM user_files
+      WHERE owner_username = $1
+    `,
+    [ownerUsername]
+  );
   const foldersPromise = pool.query(
     `
       SELECT id, owner_username, parent_folder_id, folder_name, created_at, updated_at
@@ -142,14 +150,17 @@ async function browseFolder(ownerUsername, folderId = null) {
   );
   const treePromise = buildFolderTree(ownerUsername);
   const breadcrumbsPromise = buildBreadcrumbs(ownerUsername, folderRecord);
-  const [foldersResult, filesResult, folderTree, breadcrumbs] = await Promise.all([
+  const [storageUsageResult, foldersResult, filesResult, folderTree, breadcrumbs] = await Promise.all([
+    storageUsagePromise,
     foldersPromise,
     filesPromise,
     treePromise,
     breadcrumbsPromise,
   ]);
+  const storageUsedBytes = Number(storageUsageResult.rows[0]?.storage_used_bytes || 0);
 
   return {
+    storageUsedBytes,
     currentFolder: folderRecord
       ? {
           id: folderRecord.id,
