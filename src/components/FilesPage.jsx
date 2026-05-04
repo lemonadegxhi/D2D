@@ -265,7 +265,7 @@ export default function FilesPage({
                           onExternalDrop(event, entry.id);
                         }}
                       >
-                        <span className="file-cell name">[Folder] {entry.folder_name}</span>
+                        <span className="file-cell name"> {entry.folder_name}</span>
                         <span className="file-cell type">Folder</span>
                         <span className="file-cell modified">{formatDate(entry.updated_at)}</span>
                         <span className="file-cell size">-</span>

@@ -17,6 +17,8 @@ export default function DashboardPage({
   onChangePassword,
   onCreateCalendarEvent,
   onDeleteCalendarEvent,
+  onSelectCalendarDayEvents,
+  onSelectCalendarEvent,
   onLogout,
   onOpenSettings,
   onThemeChange,
@@ -27,6 +29,10 @@ export default function DashboardPage({
   setPage,
   setPasswordForm,
   status,
+  selectedCalendarDayEvents,
+  selectedCalendarEvent,
+  setSelectedCalendarDayEvents,
+  setSelectedCalendarEvent,
   theme,
   upcomingCalendarEvents,
 }) {
@@ -69,6 +75,22 @@ export default function DashboardPage({
           onClose={() => setIsSettingsOpen(false)}
           onThemeChange={onThemeChange}
         />
+        <CalendarEventDetailsModal
+          eventItem={selectedCalendarEvent}
+          isCalendarSaving={isCalendarSaving}
+          onClose={() => setSelectedCalendarEvent(null)}
+          onDelete={onDeleteCalendarEvent}
+        />
+        <CalendarDayEventsModal
+          events={selectedCalendarDayEvents}
+          isCalendarSaving={isCalendarSaving}
+          onClose={() => setSelectedCalendarDayEvents([])}
+          onDelete={onDeleteCalendarEvent}
+          onSelectEvent={(eventItem) => {
+            setSelectedCalendarDayEvents([]);
+            onSelectCalendarEvent(eventItem);
+          }}
+        />
 
         <section className="dashboard-layout">
           <div className="calendar-panel">
@@ -84,39 +106,65 @@ export default function DashboardPage({
               ))}
             </div>
             <div className="calendar-grid">
-              {calendar.cells.map((cell) => (
-                <div
-                  key={cell.key}
-                  className={`calendar-cell ${cell.isCurrentMonth ? "" : "muted"} ${
-                    cell.isToday ? "today" : ""
-                  }`}
-                >
-                  <span className="calendar-day-label">{cell.label}</span>
-                  {cell.isCurrentMonth ? (
-                    <div className="calendar-events">
-                      {(calendarEventMap.get(cell.dateKey) || []).slice(0, 3).map((eventItem) => (
-                        <span
-                          key={eventItem.id}
-                          className="calendar-event-pill"
-                          title={
-                            eventItem.description
-                              ? `${eventItem.title} - ${eventItem.description}`
-                              : eventItem.title
-                          }
-                        >
-                          {eventItem.startTime ? `${eventItem.startTime} ` : ""}
-                          {eventItem.title}
-                        </span>
-                      ))}
-                      {(calendarEventMap.get(cell.dateKey) || []).length > 3 ? (
-                        <span className="calendar-more-events">
-                          +{(calendarEventMap.get(cell.dateKey) || []).length - 3} more
-                        </span>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
+              {calendar.cells.map((cell) => {
+                const cellEvents = calendarEventMap.get(cell.dateKey) || [];
+                const hasEvents = cellEvents.length > 0;
+
+                return (
+                  <button
+                    type="button"
+                    key={cell.key}
+                    className={`calendar-cell ${cell.isCurrentMonth ? "" : "muted"} ${
+                      cell.isToday ? "today" : ""
+                    } ${hasEvents ? "has-events" : ""}`}
+                    onClick={() => {
+                      if (!hasEvents) {
+                        return;
+                      }
+
+                      if (cellEvents.length === 1) {
+                        onSelectCalendarEvent(cellEvents[0]);
+                        return;
+                      }
+
+                      onSelectCalendarDayEvents(cellEvents);
+                    }}
+                    disabled={!hasEvents}
+                    aria-label={
+                      hasEvents
+                        ? `${cell.label}, ${cellEvents.length} calendar event${
+                            cellEvents.length === 1 ? "" : "s"
+                          }`
+                        : undefined
+                    }
+                  >
+                    <span className="calendar-day-label">{cell.label}</span>
+                    {cell.isCurrentMonth ? (
+                      <span className="calendar-events">
+                        {cellEvents.slice(0, 3).map((eventItem) => (
+                          <span
+                            key={eventItem.id}
+                            className="calendar-event-pill"
+                            title={
+                              eventItem.description
+                                ? `${eventItem.title} - ${eventItem.description}`
+                                : eventItem.title
+                            }
+                          >
+                            {eventItem.startTime ? `${eventItem.startTime} ` : ""}
+                            {eventItem.title}
+                          </span>
+                        ))}
+                        {cellEvents.length > 3 ? (
+                          <span className="calendar-more-events">
+                            +{cellEvents.length - 3} more
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -203,13 +251,17 @@ export default function DashboardPage({
                 ) : (
                   upcomingCalendarEvents.map((eventItem) => (
                     <div key={eventItem.id} className="calendar-list-item">
-                      <div>
+                      <button
+                        type="button"
+                        className="calendar-list-details-button"
+                        onClick={() => onSelectCalendarEvent(eventItem)}
+                      >
                         <strong>{eventItem.title}</strong>
                         <p>
                           {eventItem.eventDate} - {formatCalendarTimeRange(eventItem)}
                         </p>
                         {eventItem.description ? <p>{eventItem.description}</p> : null}
-                      </div>
+                      </button>
                       <button
                         type="button"
                         onClick={() => onDeleteCalendarEvent(eventItem.id, eventItem.title)}
@@ -226,5 +278,100 @@ export default function DashboardPage({
         </section>
       </div>
     </main>
+  );
+}
+
+function CalendarEventDetailsModal({ eventItem, isCalendarSaving, onClose, onDelete }) {
+  if (!eventItem) {
+    return null;
+  }
+
+  return (
+    <div className="event-details-overlay" onClick={onClose}>
+      <div
+        className="event-details-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="event-details-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="event-details-header">
+          <strong id="event-details-title">{eventItem.title}</strong>
+          <button type="button" onClick={onClose}>
+            Close
+          </button>
+        </div>
+        <dl className="event-details-list">
+          <div>
+            <dt>Date</dt>
+            <dd>{eventItem.eventDate}</dd>
+          </div>
+          <div>
+            <dt>Time</dt>
+            <dd>{formatCalendarTimeRange(eventItem)}</dd>
+          </div>
+          <div>
+            <dt>Description</dt>
+            <dd>{eventItem.description || "No description added."}</dd>
+          </div>
+        </dl>
+        <div className="event-details-actions">
+          <button
+            type="button"
+            onClick={() => onDelete(eventItem.id, eventItem.title)}
+            disabled={isCalendarSaving}
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CalendarDayEventsModal({ events, isCalendarSaving, onClose, onDelete, onSelectEvent }) {
+  if (events.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="event-details-overlay" onClick={onClose}>
+      <div
+        className="event-details-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="calendar-day-events-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="event-details-header">
+          <strong id="calendar-day-events-title">{events[0].eventDate}</strong>
+          <button type="button" onClick={onClose}>
+            Close
+          </button>
+        </div>
+        <div className="calendar-day-event-list">
+          {events.map((eventItem) => (
+            <div key={eventItem.id} className="calendar-list-item">
+              <button
+                type="button"
+                className="calendar-list-details-button"
+                onClick={() => onSelectEvent(eventItem)}
+              >
+                <strong>{eventItem.title}</strong>
+                <p>{formatCalendarTimeRange(eventItem)}</p>
+                {eventItem.description ? <p>{eventItem.description}</p> : null}
+              </button>
+              <button
+                type="button"
+                onClick={() => onDelete(eventItem.id, eventItem.title)}
+                disabled={isCalendarSaving}
+              >
+                Delete
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }

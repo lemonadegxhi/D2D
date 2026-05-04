@@ -68,6 +68,8 @@ export default function App() {
   const [selectionAnchorKey, setSelectionAnchorKey] = useState(null);
   const [pdfPreview, setPdfPreview] = useState(null);
   const [calendarEvents, setCalendarEvents] = useState([]);
+  const [selectedCalendarEvent, setSelectedCalendarEvent] = useState(null);
+  const [selectedCalendarDayEvents, setSelectedCalendarDayEvents] = useState([]);
   const [calendarError, setCalendarError] = useState("");
   const [isCalendarLoading, setIsCalendarLoading] = useState(false);
   const [isCalendarSaving, setIsCalendarSaving] = useState(false);
@@ -718,6 +720,10 @@ export default function App() {
 
     try {
       await deleteCalendarEvent(authUser.username, eventId);
+      setSelectedCalendarEvent((current) => (current?.id === eventId ? null : current));
+      setSelectedCalendarDayEvents((current) =>
+        current.filter((eventItem) => eventItem.id !== eventId)
+      );
       await loadCalendarEvents(authUser.username);
       setStatus(`Deleted "${eventTitle}" from the calendar.`);
     } catch (deleteError) {
@@ -775,6 +781,8 @@ export default function App() {
     setDraggedFileId(null);
     handleClosePdfPreview();
     setCalendarEvents([]);
+    setSelectedCalendarEvent(null);
+    setSelectedCalendarDayEvents([]);
     setCalendarError("");
     setIsCalendarSaving(false);
     setCalendarForm({
@@ -840,6 +848,8 @@ export default function App() {
         onChangePassword={handleChangePassword}
         onCreateCalendarEvent={handleCreateCalendarEvent}
         onDeleteCalendarEvent={handleDeleteCalendarEvent}
+        onSelectCalendarDayEvents={setSelectedCalendarDayEvents}
+        onSelectCalendarEvent={setSelectedCalendarEvent}
         onLogout={handleLogout}
         onOpenSettings={handleOpenSettings}
         onThemeChange={handleThemeChange}
@@ -850,6 +860,10 @@ export default function App() {
         setPage={setPage}
         setPasswordForm={setPasswordForm}
         status={status}
+        selectedCalendarDayEvents={selectedCalendarDayEvents}
+        selectedCalendarEvent={selectedCalendarEvent}
+        setSelectedCalendarDayEvents={setSelectedCalendarDayEvents}
+        setSelectedCalendarEvent={setSelectedCalendarEvent}
         theme={theme}
         upcomingCalendarEvents={upcomingCalendarEvents}
       />

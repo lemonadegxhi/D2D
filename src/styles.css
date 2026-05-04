@@ -345,6 +345,7 @@ button:disabled {
 }
 
 .calendar-cell {
+  width: 100%;
   min-height: 88px;
   padding: 10px;
   border: 1px solid var(--border);
@@ -353,6 +354,22 @@ button:disabled {
   flex-direction: column;
   gap: 6px;
   font-weight: 600;
+  text-align: left;
+}
+
+.calendar-cell:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.calendar-cell.has-events {
+  cursor: pointer;
+}
+
+.calendar-cell.has-events:hover,
+.calendar-cell.has-events:focus {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .calendar-day-label {
@@ -366,13 +383,16 @@ button:disabled {
 
 .calendar-event-pill {
   display: block;
+  width: 100%;
   padding: 4px 6px;
+  border: 0;
   border-radius: 6px;
   background: rgba(11, 87, 208, 0.12);
   color: var(--accent);
   font-size: 0.78rem;
   font-weight: 500;
   text-decoration: none;
+  text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -448,6 +468,92 @@ button:disabled {
 
 .calendar-list-item p {
   margin: 0;
+}
+
+.calendar-list-details-button {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.calendar-list-details-button:hover strong,
+.calendar-list-details-button:focus strong {
+  color: var(--accent);
+}
+
+.event-details-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 96px 24px 24px;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 20;
+  overflow: auto;
+}
+
+.event-details-modal {
+  width: min(520px, 100%);
+  border: 1px solid var(--border);
+  background: var(--panel);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.24);
+}
+
+.event-details-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-muted);
+}
+
+.event-details-list {
+  margin: 0;
+  padding: 16px;
+}
+
+.event-details-list div {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.event-details-list div:first-child {
+  padding-top: 0;
+}
+
+.event-details-list div:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.event-details-list dt {
+  margin-bottom: 4px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.event-details-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.event-details-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.calendar-day-event-list {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
 }
 
 .explorer {
@@ -775,6 +881,10 @@ button:disabled {
   }
 
   .settings-overlay {
+    padding: 24px 12px;
+  }
+
+  .event-details-overlay {
     padding: 24px 12px;
   }
 
