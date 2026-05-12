@@ -47,6 +47,31 @@ export async function changePassword(username, currentPassword, newPassword) {
   return parseJsonResponse(response);
 }
 
+export async function fetchAdminUsers(username) {
+  const response = await fetch(`${API_BASE_URL}/auth/users`, {
+    headers: username
+      ? {
+          "x-demo-user": username,
+        }
+      : {},
+  });
+
+  return parseJsonResponse(response);
+}
+
+export async function updateAdminUserRole(username, userId, role) {
+  const response = await fetch(`${API_BASE_URL}/auth/users/${userId}/role`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "x-demo-user": username,
+    },
+    body: JSON.stringify({ role }),
+  });
+
+  return parseJsonResponse(response);
+}
+
 export async function fetchHealth() {
   const response = await fetch(`${API_BASE_URL}/health`);
   return parseJsonResponse(response);

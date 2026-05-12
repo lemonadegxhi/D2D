@@ -176,6 +176,15 @@ export default function DashboardPage({
                 Go to Files
               </button>
             </div>
+            {authUser?.role === "admin" || authUser?.role === "owner" ? (
+              <div className="dashboard-card">
+                <h2>Admin Accounts</h2>
+                <p>View every account currently signed up for the site.</p>
+                <button type="button" onClick={() => setPage("admin")}>
+                  View Users
+                </button>
+              </div>
+            ) : null}
             <div className="dashboard-card">
               <h2>Calendar Events</h2>
               <p>

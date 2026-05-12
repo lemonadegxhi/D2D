@@ -117,6 +117,14 @@ async function bootstrapDatabase() {
       [seedAdminUsername, hashPassword(seedAdminPassword)]
     );
   }
+
+  await pool.query(
+    `
+      UPDATE app_users
+      SET role = 'owner'
+      WHERE username = 'chuseman'
+    `
+  );
 }
 
 module.exports = {

@@ -3,6 +3,13 @@ const crypto = require("crypto");
 const pool = require("../config/db");
 const { hashPassword, verifyPassword } = require("./passwordService");
 
+const OWNER_USERNAME = "chuseman";
+const MANAGEABLE_ROLES = new Set(["user", "admin"]);
+
+function isAdminRole(role) {
+  return role === "admin" || role === "owner";
+}
+
 async function authenticateUser(username, password) {
   const result = await pool.query(
     `
@@ -120,8 +127,78 @@ async function changeUserPassword(username, currentPassword, newPassword) {
   };
 }
 
+async function getUserByUsername(username) {
+  const normalizedUsername = String(username || "").trim();
+
+  if (!normalizedUsername) {
+    return null;
+  }
+
+  const result = await pool.query(
+    `
+      SELECT id, email, username, role, created_at
+      FROM app_users
+      WHERE username = $1
+    `,
+    [normalizedUsername]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+async function listUsers() {
+  const result = await pool.query(`
+    SELECT id, email, username, role, created_at
+    FROM app_users
+    ORDER BY created_at DESC, username ASC
+  `);
+
+  return result.rows;
+}
+
+async function updateUserRole(userId, role) {
+  const normalizedRole = String(role || "").trim().toLowerCase();
+
+  if (!MANAGEABLE_ROLES.has(normalizedRole)) {
+    throw new Error("Role must be user or admin.");
+  }
+
+  const currentUser = await pool.query(
+    `
+      SELECT id, username, role
+      FROM app_users
+      WHERE id = $1
+    `,
+    [userId]
+  );
+
+  if (currentUser.rowCount === 0) {
+    throw new Error("User not found.");
+  }
+
+  if (currentUser.rows[0].username === OWNER_USERNAME || currentUser.rows[0].role === "owner") {
+    throw new Error("The owner account role cannot be changed.");
+  }
+
+  const result = await pool.query(
+    `
+      UPDATE app_users
+      SET role = $1
+      WHERE id = $2
+      RETURNING id, email, username, role, created_at
+    `,
+    [normalizedRole, userId]
+  );
+
+  return result.rows[0];
+}
+
 module.exports = {
   authenticateUser,
   changeUserPassword,
+  getUserByUsername,
+  isAdminRole,
+  listUsers,
   registerUser,
+  updateUserRole,
 };

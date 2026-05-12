@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import DashboardPage from "./components/DashboardPage";
+import AdminPage from "./components/AdminPage";
 import FilesPage from "./components/FilesPage";
 import LoginPage from "./components/LoginPage";
 import {
@@ -13,11 +14,13 @@ import {
   deleteFolder,
   downloadFile,
   fetchCalendarEvents,
+  fetchAdminUsers,
   fetchHealth,
   login,
   moveFile,
   renameFile,
   signup,
+  updateAdminUserRole,
   uploadUserFile,
 } from "./lib/api";
 import { buildCalendarDays, getMonthDateKey, getTodayDateInputValue } from "./lib/calendarUtils";
@@ -68,6 +71,9 @@ export default function App() {
   const [selectionAnchorKey, setSelectionAnchorKey] = useState(null);
   const [pdfPreview, setPdfPreview] = useState(null);
   const [calendarEvents, setCalendarEvents] = useState([]);
+  const [adminUsers, setAdminUsers] = useState([]);
+  const [isAdminUsersLoading, setIsAdminUsersLoading] = useState(false);
+  const [updatingAdminUserId, setUpdatingAdminUserId] = useState(null);
   const [selectedCalendarEvent, setSelectedCalendarEvent] = useState(null);
   const [selectedCalendarDayEvents, setSelectedCalendarDayEvents] = useState([]);
   const [calendarError, setCalendarError] = useState("");
@@ -238,6 +244,14 @@ export default function App() {
   }, [authUser, dashboardDate, page]);
 
   useEffect(() => {
+    if (!authUser?.username || page !== "admin") {
+      return;
+    }
+
+    loadAdminUsers();
+  }, [authUser, page]);
+
+  useEffect(() => {
     if (!fileSearchQuery.trim()) {
       return;
     }
@@ -306,6 +320,54 @@ export default function App() {
       const firstFile = payload.files[0];
       return firstFile ? getSelectionKey({ type: "file", id: firstFile.id }) : null;
     });
+  }
+
+  async function loadAdminUsers() {
+    if (!authUser?.username) {
+      return;
+    }
+
+    if (authUser.role !== "admin" && authUser.role !== "owner") {
+      setAdminUsers([]);
+      setError("Admin access is required.");
+      setPage("dashboard");
+      return;
+    }
+
+    setIsAdminUsersLoading(true);
+    setError("");
+
+    try {
+      const payload = await fetchAdminUsers(authUser.username);
+      setAdminUsers(payload.users || []);
+      setStatus(`Loaded ${(payload.users || []).length} signed-up account${(payload.users || []).length === 1 ? "" : "s"}.`);
+    } catch (loadError) {
+      setAdminUsers([]);
+      setError(loadError.message);
+    } finally {
+      setIsAdminUsersLoading(false);
+    }
+  }
+
+  async function handleAdminRoleChange(userId, role) {
+    if (!authUser?.username) {
+      return;
+    }
+
+    setUpdatingAdminUserId(userId);
+    setError("");
+
+    try {
+      const payload = await updateAdminUserRole(authUser.username, userId, role);
+      setAdminUsers((current) =>
+        current.map((user) => (user.id === payload.user.id ? payload.user : user))
+      );
+      setStatus(`Updated ${payload.user.username} to ${payload.user.role}.`);
+    } catch (roleError) {
+      setError(roleError.message);
+    } finally {
+      setUpdatingAdminUserId(null);
+    }
   }
 
   function handleEntrySelection(event, entry) {
@@ -781,6 +843,9 @@ export default function App() {
     setDraggedFileId(null);
     handleClosePdfPreview();
     setCalendarEvents([]);
+    setAdminUsers([]);
+    setIsAdminUsersLoading(false);
+    setUpdatingAdminUserId(null);
     setSelectedCalendarEvent(null);
     setSelectedCalendarDayEvents([]);
     setCalendarError("");
@@ -866,6 +931,34 @@ export default function App() {
         setSelectedCalendarEvent={setSelectedCalendarEvent}
         theme={theme}
         upcomingCalendarEvents={upcomingCalendarEvents}
+      />
+    );
+  }
+
+  if (page === "admin") {
+    return (
+      <AdminPage
+        authUser={authUser}
+        error={error}
+        isLoading={isAdminUsersLoading}
+        isMenuOpen={isMenuOpen}
+        isSettingsOpen={isSettingsOpen}
+        isWorking={isWorking}
+        onChangePassword={handleChangePassword}
+        onLoadUsers={loadAdminUsers}
+        onLogout={handleLogout}
+        onOpenSettings={handleOpenSettings}
+        onRoleChange={handleAdminRoleChange}
+        onThemeChange={handleThemeChange}
+        passwordForm={passwordForm}
+        setIsMenuOpen={setIsMenuOpen}
+        setIsSettingsOpen={setIsSettingsOpen}
+        setPage={setPage}
+        setPasswordForm={setPasswordForm}
+        status={status}
+        theme={theme}
+        updatingUserId={updatingAdminUserId}
+        users={adminUsers}
       />
     );
   }

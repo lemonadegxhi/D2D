@@ -3,7 +3,11 @@ const express = require("express");
 const {
   authenticateUser,
   changeUserPassword,
+  getUserByUsername,
+  isAdminRole,
+  listUsers,
   registerUser,
+  updateUserRole,
 } = require("../services/authService");
 
 const router = express.Router();
@@ -64,6 +68,89 @@ router.post("/login", async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       message: "Failed to authenticate user.",
+      error: error.message,
+    });
+  }
+});
+
+router.get("/users", async (req, res) => {
+  const username = req.header("x-demo-user");
+
+  if (!username) {
+    return res.status(401).json({
+      message: "Login is required.",
+    });
+  }
+
+  try {
+    const requester = await getUserByUsername(username);
+
+    if (!requester) {
+      return res.status(404).json({
+        message: "User not found.",
+      });
+    }
+
+    if (!isAdminRole(requester.role)) {
+      return res.status(403).json({
+        message: "Admin access is required.",
+      });
+    }
+
+    const users = await listUsers();
+
+    return res.json({
+      users,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Failed to load users.",
+      error: error.message,
+    });
+  }
+});
+
+router.patch("/users/:userId/role", async (req, res) => {
+  const username = req.header("x-demo-user");
+  const { role } = req.body ?? {};
+
+  if (!username) {
+    return res.status(401).json({
+      message: "Login is required.",
+    });
+  }
+
+  try {
+    const requester = await getUserByUsername(username);
+
+    if (!requester) {
+      return res.status(404).json({
+        message: "User not found.",
+      });
+    }
+
+    if (!isAdminRole(requester.role)) {
+      return res.status(403).json({
+        message: "Admin access is required.",
+      });
+    }
+
+    const user = await updateUserRole(req.params.userId, role);
+
+    return res.json({
+      message: "User role updated.",
+      user,
+    });
+  } catch (error) {
+    const status =
+      error.message === "User not found."
+        ? 404
+        : error.message.includes("cannot be changed") || error.message.includes("must be")
+          ? 400
+          : 500;
+
+    return res.status(status).json({
+      message: "Failed to update user role.",
       error: error.message,
     });
   }
